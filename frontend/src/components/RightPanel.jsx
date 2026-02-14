@@ -37,11 +37,11 @@ function SkeletonCard() {
   );
 }
 
-export default function RightPanel({ analysisResult, isLoading }) {
+export default function RightPanel({ analysisResult, isLoading, isOpen, onClose }) {
   const hasResult = !!analysisResult;
 
   return (
-    <aside className="right-panel">
+    <aside className={`right-panel${isOpen ? ' is-open' : ''}`}>
       <div className="panel-header">
         <span className="panel-title">Analysis</span>
         {hasResult && (
@@ -56,6 +56,13 @@ export default function RightPanel({ analysisResult, isLoading }) {
             Processing
           </span>
         )}
+        {/* Close button — visible on tablet/mobile only via CSS */}
+        <button className="panel-close-btn" onClick={onClose} title="Close panel" aria-label="Close panel">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <line x1="18" y1="6" x2="6"  y2="18"/>
+            <line x1="6"  y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
       </div>
 
       <div className="metrics-container">

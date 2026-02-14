@@ -14,6 +14,25 @@ export default function App() {
   const [geometry,       setGeometry]       = useState(null);
   const [viewerStatus,   setViewerStatus]   = useState('Ready');
 
+  // ── Responsive panel drawer state (tablet / mobile) ───────────────────────
+  const [leftPanelOpen,  setLeftPanelOpen]  = useState(false);
+  const [rightPanelOpen, setRightPanelOpen] = useState(false);
+
+  const closeAllPanels = useCallback(() => {
+    setLeftPanelOpen(false);
+    setRightPanelOpen(false);
+  }, []);
+
+  const handleToggleLeft = useCallback(() => {
+    setLeftPanelOpen(v => !v);
+    setRightPanelOpen(false);
+  }, []);
+
+  const handleToggleRight = useCallback(() => {
+    setRightPanelOpen(v => !v);
+    setLeftPanelOpen(false);
+  }, []);
+
   const handleFileUpload = useCallback(async (file) => {
     if (!file) return;
 
@@ -29,6 +48,7 @@ export default function App() {
     setGeometry(null);
     setUploadedFile(file);
     setViewerStatus('Uploading to Python engine…');
+    closeAllPanels(); // show viewer during load on mobile
 
     // POST to Python FastAPI backend.
     // In dev: VITE_API_BASE_URL=http://localhost:8000 (set in .env)
@@ -70,11 +90,13 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [closeAllPanels]);
 
   const handleFitScreen = useCallback(() => {
     window.dispatchEvent(new CustomEvent('dxf-fit-screen'));
   }, []);
+
+  const anyPanelOpen = leftPanelOpen || rightPanelOpen;
 
   return (
     <div className="app-layout">
@@ -83,6 +105,17 @@ export default function App() {
         onFileUpload={handleFileUpload}
         onFitScreen={handleFitScreen}
         isLoading={isLoading}
+        leftPanelOpen={leftPanelOpen}
+        rightPanelOpen={rightPanelOpen}
+        onToggleLeft={handleToggleLeft}
+        onToggleRight={handleToggleRight}
+      />
+
+      {/* Backdrop: tapping outside an open drawer closes it (tablet/mobile) */}
+      <div
+        className={`panel-backdrop${anyPanelOpen ? ' visible' : ''}`}
+        onClick={closeAllPanels}
+        aria-hidden="true"
       />
 
       <div className="app-body">
@@ -93,6 +126,8 @@ export default function App() {
           entityCount={analysisResult?.entityCount}
           units={analysisResult?.units}
           boundingBox={analysisResult?.boundingBox}
+          isOpen={leftPanelOpen}
+          onClose={() => setLeftPanelOpen(false)}
         />
 
         <main className="viewer-container">
@@ -107,6 +142,8 @@ export default function App() {
         <RightPanel
           analysisResult={analysisResult}
           isLoading={isLoading}
+          isOpen={rightPanelOpen}
+          onClose={() => setRightPanelOpen(false)}
         />
       </div>
 

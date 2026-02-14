@@ -1,7 +1,10 @@
 import React, { useRef } from 'react';
 import './TopBar.css';
 
-export default function TopBar({ fileName, onFileUpload, onFitScreen, isLoading }) {
+export default function TopBar({
+  fileName, onFileUpload, onFitScreen, isLoading,
+  leftPanelOpen, rightPanelOpen, onToggleLeft, onToggleRight,
+}) {
   const fileInputRef = useRef(null);
 
   const handleUploadClick = () => {
@@ -45,6 +48,34 @@ export default function TopBar({ fileName, onFileUpload, onFitScreen, isLoading 
 
       {/* Toolbar Actions */}
       <div className="topbar-actions">
+
+        {/* Panel toggles — hidden on desktop (≥992px), visible on tablet/mobile */}
+        <button
+          className={`btn-panel-toggle${leftPanelOpen ? ' active' : ''}`}
+          onClick={onToggleLeft}
+          title="File Info Panel"
+          aria-label="Toggle file info panel"
+          aria-pressed={leftPanelOpen}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="3" y1="6"  x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+
+        <button
+          className={`btn-panel-toggle${rightPanelOpen ? ' active' : ''}`}
+          onClick={onToggleRight}
+          title="Analysis Panel"
+          aria-label="Toggle analysis panel"
+          aria-pressed={rightPanelOpen}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M18 20V10M12 20V4M6 20v-6"/>
+          </svg>
+        </button>
+
         <button
           className="btn-upload"
           onClick={handleUploadClick}
@@ -54,14 +85,14 @@ export default function TopBar({ fileName, onFileUpload, onFitScreen, isLoading 
           {isLoading ? (
             <>
               <span className="spinner-sm" />
-              Processing...
+              <span className="btn-label">Processing...</span>
             </>
           ) : (
             <>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
               </svg>
-              Open DXF
+              <span className="btn-label">Open DXF</span>
             </>
           )}
         </button>
@@ -75,7 +106,7 @@ export default function TopBar({ fileName, onFileUpload, onFitScreen, isLoading 
             <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
             <line x1="7" y1="7" x2="7.01" y2="7"/>
           </svg>
-          Add Quote
+          <span className="btn-label">Add Quote</span>
         </button>
 
         {fileName && (
@@ -92,8 +123,7 @@ export default function TopBar({ fileName, onFileUpload, onFitScreen, isLoading 
 
         <div className="topbar-separator" />
 
-        {/* Zoom Controls placeholder */}
-        <span className="topbar-hint">Scroll to zoom • Drag to pan</span>
+        <span className="topbar-hint">Scroll / Pinch to zoom &nbsp;·&nbsp; Drag to pan</span>
       </div>
 
       {/* File Name Display */}

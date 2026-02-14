@@ -61,3 +61,17 @@
   color: rgba(255, 255, 255, 0.3);
   font-size: 11px;
 }
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+
+/* Tablet (≤991px): hide version/tool label to save space */
+@media (max-width: 991px) {
+  .status-right { display: none; }
+}
+
+/* Mobile (≤767px): compact height, show filename in center */
+@media (max-width: 767px) {
+  .status-bar  { height: 24px; padding: 0 10px; gap: 10px; }
+  .status-text { font-size: 10px; }
+  .status-file { font-size: 10px; max-width: 160px; }
+}

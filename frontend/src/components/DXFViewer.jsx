@@ -103,6 +103,8 @@ export default function DXFViewer({ geometry, isLoading, error, onStatusChange }
     lastMouse:   { x: 0, y: 0 },
     frustumSize: 200,
   });
+  // Touch state for pinch-to-zoom + single-finger pan
+  const touchRef = useRef({ dist: 0 });
 
   const [zoomPct, setZoomPct] = useState(100);
   const [hasGeo,  setHasGeo]  = useState(false);
@@ -269,14 +271,81 @@ export default function DXFViewer({ geometry, isLoading, error, onStatusChange }
       mount.style.cursor = 'grab';
     };
 
-    mount.addEventListener('wheel',      onWheel,     { passive: false });
+    // ── Touch: single-finger pan + two-finger pinch-zoom ──────────────────
+    const onTouchStart = (e) => {
+      if (e.touches.length === 1) {
+        stateRef.current.isPanning = true;
+        stateRef.current.lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      } else if (e.touches.length === 2) {
+        stateRef.current.isPanning = false;
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        touchRef.current.dist = Math.hypot(dx, dy);
+      }
+    };
+
+    const onTouchMove = (e) => {
+      e.preventDefault(); // block browser scroll / native pinch-zoom
+      const three = threeRef.current;
+      if (!three) return;
+      const { camera } = three;
+
+      if (e.touches.length === 1 && stateRef.current.isPanning) {
+        const dx = e.touches[0].clientX - stateRef.current.lastMouse.x;
+        const dy = e.touches[0].clientY - stateRef.current.lastMouse.y;
+        stateRef.current.lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        const W   = mount.clientWidth, H = mount.clientHeight;
+        const fs  = stateRef.current.frustumSize;
+        const asp = W / H;
+        camera.position.x -= dx * (fs * asp) / W;
+        camera.position.y += dy * fs / H;
+      } else if (e.touches.length === 2) {
+        const dx   = e.touches[0].clientX - e.touches[1].clientX;
+        const dy   = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.hypot(dx, dy);
+        // Clamp factor to avoid jumps when fingers first separate
+        const factor = touchRef.current.dist > 0
+          ? touchRef.current.dist / dist
+          : 1;
+        touchRef.current.dist = dist;
+        const oldFs = stateRef.current.frustumSize;
+        const newFs = Math.max(1e-4, Math.min(1e8, oldFs * factor));
+        stateRef.current.frustumSize = newFs;
+        const W   = mount.clientWidth, H = mount.clientHeight, asp = W / H;
+        camera.left   = (newFs * asp) / -2;
+        camera.right  = (newFs * asp) /  2;
+        camera.top    =  newFs        /  2;
+        camera.bottom =  newFs        / -2;
+        camera.updateProjectionMatrix();
+        setZoomPct(Math.round((baseFrustumRef.current / newFs) * 100));
+      }
+    };
+
+    const onTouchEnd = (e) => {
+      if (e.touches.length === 0) {
+        stateRef.current.isPanning = false;
+        touchRef.current.dist = 0;
+      } else if (e.touches.length === 1) {
+        // Dropped from 2-finger to 1-finger — restart pan tracking
+        stateRef.current.isPanning = true;
+        stateRef.current.lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }
+    };
+
+    mount.addEventListener('wheel',      onWheel,      { passive: false });
     mount.addEventListener('mousedown',  onMouseDown);
+    mount.addEventListener('touchstart', onTouchStart, { passive: false });
+    mount.addEventListener('touchmove',  onTouchMove,  { passive: false });
+    mount.addEventListener('touchend',   onTouchEnd);
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup',   onMouseUp);
 
     return () => {
       mount.removeEventListener('wheel',      onWheel);
       mount.removeEventListener('mousedown',  onMouseDown);
+      mount.removeEventListener('touchstart', onTouchStart);
+      mount.removeEventListener('touchmove',  onTouchMove);
+      mount.removeEventListener('touchend',   onTouchEnd);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup',   onMouseUp);
     };

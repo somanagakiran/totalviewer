@@ -72,3 +72,20 @@ body {
   background: rgba(56, 139, 253, 0.3);
   color: var(--text-primary);
 }
+
+/* ── Responsive overrides ────────────────────────────────────────────────── */
+/* Tablet (768-991px): panels become drawers, topbar stays same height */
+@media (max-width: 991px) {
+  :root {
+    --panel-width: 280px;
+  }
+}
+
+/* Mobile (≤767px): compact topbar + status bar */
+@media (max-width: 767px) {
+  :root {
+    --topbar-height: 48px;
+    --panel-width: 280px;
+    --status-height: 24px;
+  }
+}

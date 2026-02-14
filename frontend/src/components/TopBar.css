@@ -171,6 +171,66 @@
   text-overflow: ellipsis;
 }
 
+/* Panel toggle buttons — hidden on desktop (≥992px), shown on tablet/mobile */
+.btn-panel-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.btn-panel-toggle.active {
+  background: rgba(56, 139, 253, 0.12);
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+.btn-panel-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-accent);
+}
+
+/* ── Responsive breakpoints ─────────────────────────────────────────────── */
+
+/* Tablet (768–991px): show panel toggles, collapse hint + separator */
+@media (max-width: 991px) {
+  .btn-panel-toggle { display: flex; }
+  .topbar-hint      { display: none; }
+  .topbar-separator { display: none; }
+}
+
+/* Mobile (≤767px): compact toolbar height + tighter padding */
+@media (max-width: 767px) {
+  .topbar         { padding: 0 10px; gap: 6px; height: 48px; }
+  .brand-tag      { display: none; }
+  .topbar-filename { display: none; } /* filename lives in status bar on mobile */
+  .btn-upload,
+  .btn-quote      { padding: 6px 10px; font-size: 12px; gap: 5px; }
+  .topbar-actions { margin-left: 8px; gap: 6px; }
+}
+
+/* Small mobile (≤480px): hide brand name text to free space */
+@media (max-width: 480px) {
+  .brand-name     { display: none; }
+  .topbar-actions { margin-left: 4px; }
+}
+
+/* Extra-small (≤380px): icon-only primary buttons */
+@media (max-width: 380px) {
+  .btn-label      { display: none; }
+  .btn-upload,
+  .btn-quote      { padding: 6px 8px; gap: 0; }
+}
+
 /* Spinner */
 .spinner-sm {
   width: 13px;

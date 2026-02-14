@@ -13,15 +13,22 @@ function formatNumber(n) {
   return n.toLocaleString();
 }
 
-export default function LeftPanel({ fileName, fileSize, layers, entityCount, units, boundingBox }) {
+export default function LeftPanel({ fileName, fileSize, layers, entityCount, units, boundingBox, isOpen, onClose }) {
   const [layersExpanded, setLayersExpanded] = useState(true);
 
   const hasFile = !!fileName;
 
   return (
-    <aside className="left-panel">
+    <aside className={`left-panel${isOpen ? ' is-open' : ''}`}>
       <div className="panel-header">
         <span className="panel-title">File Info</span>
+        {/* Close button — visible on tablet/mobile only via CSS */}
+        <button className="panel-close-btn" onClick={onClose} title="Close panel" aria-label="Close panel">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6"  y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
       </div>
 
       {/* File Details */}
