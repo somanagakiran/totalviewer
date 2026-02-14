@@ -22,6 +22,14 @@ export default function TopBar({ fileName, onFileUpload, onFitScreen, isLoading 
     if (file) onFileUpload(file);
   };
 
+  // ── Quote handler (Phase 1 placeholder) ──────────────────────────────────
+  // Phase 2: replace body with openQuoteModal({ geometry, analysisResult })
+  const handleAddQuote = () => {
+    // Future hook: pass geometry + analysis data to costing engine
+    // openQuoteModal({ geometry, analysisResult, fileName });
+    alert('Quote workflow will be implemented in next phase');
+  };
+
   return (
     <header className="topbar" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
       {/* Logo / App Name */}
@@ -56,6 +64,18 @@ export default function TopBar({ fileName, onFileUpload, onFitScreen, isLoading 
               Open DXF
             </>
           )}
+        </button>
+
+        <button
+          className="btn-quote"
+          onClick={handleAddQuote}
+          title="Add Quote for this DXF part"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
+            <line x1="7" y1="7" x2="7.01" y2="7"/>
+          </svg>
+          Add Quote
         </button>
 
         {fileName && (

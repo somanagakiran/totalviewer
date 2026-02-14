@@ -30,12 +30,15 @@ export default function App() {
     setUploadedFile(file);
     setViewerStatus('Uploading to Python engine…');
 
-    // POST to Python FastAPI backend via Vite proxy (/api → localhost:8000)
+    // POST to Python FastAPI backend.
+    // In dev: VITE_API_BASE_URL=http://localhost:8000 (set in .env)
+    // In production: VITE_API_BASE_URL=https://your-backend.onrender.com
+    const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
     const formData = new FormData();
     formData.append('file', file);
 
     try {
-      const response = await fetch('/api/upload', {
+      const response = await fetch(`${API_BASE}/upload`, {
         method: 'POST',
         body: formData,
       });
@@ -61,7 +64,7 @@ export default function App() {
     } catch (err) {
       setError(
         err.message ||
-        'Failed to process file. Make sure the Python backend is running on port 8000.'
+        `Failed to process file. Is the Python backend running at ${import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'}?`
       );
       setViewerStatus('Error loading file');
     } finally {

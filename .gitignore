@@ -1,0 +1,23 @@
+# Deployment platforms
+.vercel
+
+# Frontend build output
+frontend/dist
+
+# Environment secrets — never commit real .env files
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+python-backend/uploads/
+
+# Node
+node_modules/
+frontend/node_modules/
+backend/node_modules/

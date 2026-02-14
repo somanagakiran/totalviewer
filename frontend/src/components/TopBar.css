@@ -84,6 +84,32 @@
   cursor: not-allowed;
 }
 
+/* Add Quote Button — mirrors btn-upload geometry/typography, uses green accent */
+.btn-quote {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 16px;
+  background: var(--accent-green);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.btn-quote:hover {
+  background: #56d36b;
+}
+
+.btn-quote:active {
+  background: #2ea043;
+}
+
 .btn-icon {
   display: flex;
   align-items: center;
