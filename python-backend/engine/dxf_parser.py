@@ -427,81 +427,111 @@ def _bulge_to_arc_points(
 
 def _chain_segments_to_loops(geometry: list[dict]) -> list[list[tuple]]:
     """
-    Build a graph of all open line-segment endpoints and find closed loops.
-    Each loop is returned as an ordered list of (x, y) tuples.
+    Chain disconnected open line / arc segments into closed loops.
 
-    This handles drawings where the cutting profile is defined as many
-    individual LINE / open-ARC entities that together form closed contours.
+    Handles drawings where the cutting profile is composed of many individual
+    LINE or open-ARC entities that together form closed contours (e.g. a
+    rectangular outline drawn as 4 separate LINE entities).
+
+    Algorithm
+    ---------
+    1.  Collect every open segment as (start_key, end_key, interpolated_pts).
+    2.  Build an adjacency graph keyed on snapped endpoints.
+    3.  For each unvisited node, greedily follow the single outgoing unused
+        edge until we either return to the start (→ closed loop) or get stuck.
+    4.  Accept a loop only if it has ≥ 3 segments and ≥ 3 unique points.
+
+    The greedy walk works well for typical sheet-metal DXF profiles where
+    each endpoint connects to exactly one other segment (degree-2 graph).
+    For branching topologies the first valid branch is always taken.
     """
-    SNAP = 0.5  # endpoint snap tolerance (units)
+    from collections import defaultdict
 
-    # Collect all segment endpoint pairs from open geometries
-    segments: list[tuple[tuple, tuple]] = []
+    SNAP = 0.5  # endpoint snap tolerance (drawing units)
+
+    def snap_key(px: float, py: float) -> tuple:
+        return (round(px / SNAP) * SNAP, round(py / SNAP) * SNAP)
+
+    # ── Collect open segments ─────────────────────────────────────────────────
+    segs: list[dict] = []          # {k0, k1, pts_fwd}
     for item in geometry:
         if item.get("closed"):
-            continue  # already a closed contour
-        pts = item.get("points", [])
-        if len(pts) < 2:
             continue
-        p0 = (pts[0][0], pts[0][1])
-        p1 = (pts[-1][0], pts[-1][1])
-        if _dist(list(p0), list(p1)) < SNAP:
-            continue  # already self-closing, tiny segment
-        segments.append((p0, p1))
+        raw = item.get("points", [])
+        if len(raw) < 2:
+            continue
+        p0 = raw[0]
+        p1 = raw[-1]
+        k0 = snap_key(p0[0], p0[1])
+        k1 = snap_key(p1[0], p1[1])
+        if k0 == k1:
+            continue  # self-closing → treat as already closed
+        pts = [(float(pt[0]), float(pt[1])) for pt in raw]
+        segs.append({"k0": k0, "k1": k1, "pts": pts})
 
-    if not segments:
+    if not segs:
         return []
 
-    # Build adjacency map: snap endpoints together
-    def snap_key(p: tuple) -> tuple:
-        return (round(p[0] / SNAP) * SNAP, round(p[1] / SNAP) * SNAP)
-
-    # adjacency: node → list of (neighbour_node, segment_index, direction)
-    from collections import defaultdict
+    # ── Build adjacency ───────────────────────────────────────────────────────
+    # adj[node] = list of (neighbour_node, seg_idx, forward:bool)
     adj: dict[tuple, list] = defaultdict(list)
+    for idx, seg in enumerate(segs):
+        adj[seg["k0"]].append((seg["k1"], idx, True))
+        adj[seg["k1"]].append((seg["k0"], idx, False))
 
-    for idx, (p0, p1) in enumerate(segments):
-        k0, k1 = snap_key(p0), snap_key(p1)
-        adj[k0].append((k1, idx, "fwd"))
-        adj[k1].append((k0, idx, "rev"))
+    # ── Greedy chain-following ────────────────────────────────────────────────
+    loops:     list[list[tuple]] = []
+    used_segs: set[int]          = set()
 
-    # DFS to find closed loops
-    loops: list[list[tuple]] = []
-    used: set[int] = set()
+    for start_node in list(adj.keys()):
+        # Skip if all edges from this node are already consumed
+        if all(sidx in used_segs for (_, sidx, _) in adj[start_node]):
+            continue
 
-    def dfs_loop(start: tuple, current: tuple, path: list, path_pts: list[list]):
-        for (nxt, seg_idx, _direction) in adj[current]:
-            if seg_idx in used:
-                continue
-            # Check if we've closed a loop
-            if nxt == start and len(path) > 2:
-                loops.append([_snap_round(p) for p in path_pts])
-                used.update(path)
-                return True
-            if nxt in [snap_key(p) for p in path_pts]:
-                continue  # avoid revisiting
-            used.add(seg_idx)
-            path.append(seg_idx)
-            # Add points from this segment
-            seg_p0, seg_p1 = segments[seg_idx]
-            path_pts.append(seg_p1)  # direction matters but approximate
-            if dfs_loop(start, nxt, path, path_pts):
-                return True
-            path.pop()
-            path_pts.pop()
-            used.discard(seg_idx)
-        return False
+        current     = start_node
+        local_used: list[int] = []
+        chain_pts:  list[tuple] = []
+        found_loop  = False
 
-    for node in list(adj.keys()):
-        dfs_loop(node, node, [], [adj[node][0][0]])
+        while True:
+            # Pick the first unused edge from `current`
+            step = None
+            for (nxt, sidx, fwd) in adj[current]:
+                if sidx not in used_segs:
+                    step = (nxt, sidx, fwd)
+                    break
+            if step is None:
+                break  # dead end — no more unused edges
+
+            nxt, sidx, fwd = step
+            used_segs.add(sidx)
+            local_used.append(sidx)
+
+            seg = segs[sidx]
+            pts = seg["pts"] if fwd else list(reversed(seg["pts"]))
+
+            if not chain_pts:
+                # First segment: include all points
+                chain_pts.extend(pts)
+            else:
+                # Subsequent: skip the first point (already in chain_pts)
+                chain_pts.extend(pts[1:])
+
+            if nxt == start_node:
+                # Closed loop found
+                if len(local_used) >= 3 and len(chain_pts) >= 3:
+                    loops.append([(p[0], p[1]) for p in chain_pts])
+                found_loop = True
+                break
+
+            current = nxt
+
+        if not found_loop:
+            # Walk did not close — release edges so other starts can try
+            for sidx in local_used:
+                used_segs.discard(sidx)
 
     return loops
-
-
-def _snap_round(p) -> tuple:
-    if isinstance(p, tuple):
-        return (round(p[0], 4), round(p[1], 4))
-    return (round(p[0], 4), round(p[1], 4))
 
 
 # ═════════════════════════════════════════════════════════════════════════════

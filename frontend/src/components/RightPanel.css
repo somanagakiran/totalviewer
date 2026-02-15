@@ -356,3 +356,122 @@
   border-radius: 50%;
   flex-shrink: 0;
 }
+
+/* ── Analyze DXF action section ──────────────────────────────────── */
+.analyze-section {
+  padding: 4px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.btn-analyze-dxf {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  padding: 10px 16px;
+  background: rgba(56, 139, 253, 0.12);
+  color: var(--accent-blue);
+  border: 1px solid rgba(56, 139, 253, 0.4);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+  letter-spacing: 0.2px;
+  min-height: 36px;
+}
+
+.btn-analyze-dxf:hover:not(:disabled) {
+  background: rgba(56, 139, 253, 0.2);
+  border-color: rgba(56, 139, 253, 0.7);
+}
+
+.btn-analyze-dxf:active:not(:disabled) {
+  background: rgba(56, 139, 253, 0.28);
+}
+
+.btn-analyze-dxf:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  background: var(--bg-tertiary);
+  border-color: var(--border-primary);
+  color: var(--text-muted);
+}
+
+/* Done / re-analyze state — subdued green tint */
+.btn-analyze-dxf.btn-analyze-done {
+  background: rgba(63, 185, 80, 0.1);
+  color: var(--accent-green);
+  border-color: rgba(63, 185, 80, 0.35);
+}
+
+.btn-analyze-dxf.btn-analyze-done:hover:not(:disabled) {
+  background: rgba(63, 185, 80, 0.18);
+  border-color: rgba(63, 185, 80, 0.6);
+}
+
+/* Inline spinner inside button */
+.btn-spinner-inline {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid rgba(56, 139, 253, 0.3);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+/* Error toast */
+.analyze-error-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 8px 10px;
+  background: rgba(248, 81, 73, 0.1);
+  border: 1px solid rgba(248, 81, 73, 0.3);
+  border-radius: 5px;
+  font-size: 11px;
+  color: #f85149;
+  line-height: 1.4;
+}
+
+.analyze-error-toast span {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.toast-dismiss {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 1px;
+  cursor: pointer;
+  color: #f85149;
+  opacity: 0.7;
+  line-height: 1;
+  margin-top: 1px;
+}
+
+.toast-dismiss:hover {
+  opacity: 1;
+}
+
+/* "Ready" badge — file loaded, analysis not yet run */
+.status-badge.ready {
+  background: rgba(210, 153, 34, 0.15);
+  color: #d29922;
+  border: 1px solid rgba(210, 153, 34, 0.25);
+}
+
+.badge-dot-ready {
+  width: 6px;
+  height: 6px;
+  background: #d29922;
+  border-radius: 50%;
+}

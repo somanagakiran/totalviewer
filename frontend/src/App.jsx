@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import TopBar from './components/TopBar';
 import LeftPanel from './components/LeftPanel';
 import RightPanel from './components/RightPanel';
@@ -7,15 +7,21 @@ import StatusBar from './components/StatusBar';
 import './App.css';
 
 export default function App() {
-  const [uploadedFile,   setUploadedFile]   = useState(null);
-  const [analysisResult, setAnalysisResult] = useState(null);
-  const [isLoading,      setIsLoading]      = useState(false);
-  const [error,          setError]          = useState(null);
-  const [geometry,       setGeometry]       = useState(null);
-  const [viewerStatus,   setViewerStatus]   = useState('Ready');
 
-  // ── Responsive panel drawer state (tablet / mobile) ───────────────────────
-  const [leftPanelOpen,  setLeftPanelOpen]  = useState(false);
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [analysisResult, setAnalysisResult] = useState(null);
+  const [sessionId, setSessionId] = useState(null);   // ⭐ NEW
+  const [geometry, setGeometry] = useState(null);
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisComplete, setAnalysisComplete] = useState(false);
+
+  const [error, setError] = useState(null);
+  const [analyzeError, setAnalyzeError] = useState(null);
+  const [viewerStatus, setViewerStatus] = useState('Ready');
+
+  const [leftPanelOpen, setLeftPanelOpen] = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
 
   const closeAllPanels = useCallback(() => {
@@ -33,7 +39,21 @@ export default function App() {
     setLeftPanelOpen(false);
   }, []);
 
+  // ─────────────────────────────────────────────
+  // RESTORE SESSION AFTER REFRESH
+  // ─────────────────────────────────────────────
+  useEffect(() => {
+    const savedSession = localStorage.getItem('session_id');
+    if (savedSession) {
+      setSessionId(savedSession);
+    }
+  }, []);
+
+  // ─────────────────────────────────────────────
+  // FILE UPLOAD
+  // ─────────────────────────────────────────────
   const handleFileUpload = useCallback(async (file) => {
+
     if (!file) return;
 
     const ext = file.name.split('.').pop().toLowerCase();
@@ -46,14 +66,15 @@ export default function App() {
     setIsLoading(true);
     setAnalysisResult(null);
     setGeometry(null);
+    setAnalysisComplete(false);
+    setAnalyzeError(null);
     setUploadedFile(file);
     setViewerStatus('Uploading to Python engine…');
-    closeAllPanels(); // show viewer during load on mobile
+    setLeftPanelOpen(false);   // close left panel only; keep/open right for results
 
-    // POST to Python FastAPI backend.
-    // In dev: VITE_API_BASE_URL=http://localhost:8000 (set in .env)
-    // In production: VITE_API_BASE_URL=https://your-backend.onrender.com
-    const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+    const API_BASE =
+      import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+
     const formData = new FormData();
     formData.append('file', file);
 
@@ -66,10 +87,13 @@ export default function App() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.detail || data.error || 'Upload failed');
+        throw new Error(data.detail || 'Upload failed');
       }
 
-      // Normalise field names expected by LeftPanel / RightPanel
+      // ⭐ STORE SESSION ID SAFELY
+      setSessionId(data.session_id);
+      localStorage.setItem('session_id', data.session_id);
+
       const result = {
         ...data,
         entityCount: data.entities,
@@ -78,19 +102,63 @@ export default function App() {
 
       setAnalysisResult(result);
       setGeometry(data.geometry);
+      setAnalysisComplete(true);   // analysis runs inline on upload — always complete
+      setRightPanelOpen(true);     // auto-open right panel to show results
+
       setViewerStatus(
         `Loaded · ${data.entities} entities · ${data.layers?.length ?? 0} layers`
       );
+
     } catch (err) {
-      setError(
-        err.message ||
-        `Failed to process file. Is the Python backend running at ${import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'}?`
-      );
+      setError(err.message);
       setViewerStatus('Error loading file');
     } finally {
       setIsLoading(false);
     }
-  }, [closeAllPanels]);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ─────────────────────────────────────────────
+  // ANALYZE
+  // ─────────────────────────────────────────────
+  const handleAnalyze = useCallback(async () => {
+
+    if (isAnalyzing) return;
+
+    if (!sessionId) {
+      setAnalyzeError('Session not found. Please re-upload the DXF file.');
+      return;
+    }
+
+    const API_BASE =
+      import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+
+    setIsAnalyzing(true);
+
+    try {
+      const response = await fetch(`${API_BASE}/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || 'Analysis failed');
+      }
+
+      setAnalysisResult(prev => ({ ...prev, ...data }));
+      setAnalysisComplete(true);
+
+    } catch (err) {
+      setAnalyzeError(err.message);
+    } finally {
+      setIsAnalyzing(false);
+    }
+
+  }, [sessionId, isAnalyzing]);
 
   const handleFitScreen = useCallback(() => {
     window.dispatchEvent(new CustomEvent('dxf-fit-screen'));
@@ -100,6 +168,7 @@ export default function App() {
 
   return (
     <div className="app-layout">
+
       <TopBar
         fileName={uploadedFile?.name}
         onFileUpload={handleFileUpload}
@@ -111,14 +180,13 @@ export default function App() {
         onToggleRight={handleToggleRight}
       />
 
-      {/* Backdrop: tapping outside an open drawer closes it (tablet/mobile) */}
       <div
         className={`panel-backdrop${anyPanelOpen ? ' visible' : ''}`}
         onClick={closeAllPanels}
-        aria-hidden="true"
       />
 
       <div className="app-body">
+
         <LeftPanel
           fileName={uploadedFile?.name}
           fileSize={uploadedFile?.size}
@@ -142,12 +210,18 @@ export default function App() {
         <RightPanel
           analysisResult={analysisResult}
           isLoading={isLoading}
+          isAnalyzing={isAnalyzing}
+          analysisComplete={analysisComplete}
+          onAnalyze={handleAnalyze}
+          analyzeError={analyzeError}
           isOpen={rightPanelOpen}
           onClose={() => setRightPanelOpen(false)}
         />
+
       </div>
 
       <StatusBar status={viewerStatus} fileName={uploadedFile?.name} />
+
     </div>
   );
 }
