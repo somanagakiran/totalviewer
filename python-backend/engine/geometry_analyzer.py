@@ -46,9 +46,9 @@ MIN_AREA            = 0.01   # ignore polygons smaller than this (units²)
 FRAME_MIN_COVERAGE  = 0.97   # frame must cover ≥ 97 % of the bbox area
 FRAME_EDGE_REL_TOL  = 0.02   # frame edges within 2 % of max(W,H) of bbox edges
 ISOPERIMETRIC_RATIO = 50.0   # L²/A > 50 -> polygon is "hollow" (drawing frame)
-DEDUP_DISTANCE      = 1.0    # centroids closer than this are considered duplicates
-SNAP_PRECISION      = 1e-3   # coordinate grid for polygonize endpoint snapping
-MAX_POLYGONIZE_SEGS = 300    # skip Track B polygonize above this — prevents hang
+DEDUP_DISTANCE      = 0.05   # centroids closer than this are considered duplicates
+SNAP_PRECISION      = 1e-2   # coordinate grid for polygonize endpoint snapping
+MAX_POLYGONIZE_SEGS = 10000  # skip Track B polygonize above this — prevents hang
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -217,7 +217,9 @@ def analyze_geometry(
     # Pre-compute a tiny expansion of outer_poly for boundary-precision fallback.
     _outer_buf = None
     try:
-        _outer_buf = outer_poly.buffer(0.01)
+        # Use a scale-aware buffer so near-boundary holes are still included
+        max_dim = max(bounding_box.get("width", 1) or 1, bounding_box.get("height", 1) or 1)
+        _outer_buf = outer_poly.buffer(max_dim * 0.001)
     except Exception:
         pass
 
@@ -240,7 +242,31 @@ def analyze_geometry(
 
     hole_details: list = []
 
-    # 4a. CIRCLE entities — use parser-provided center coordinate directly
+    # 4a. Holes from polygon tracks (Track A & B) — classify any interior rings
+    #     that are not the chosen outer boundary. This captures pockets formed
+    #     by chains of LINE/ARC segments that polygonize into closed loops.
+    try:
+        for i, poly in enumerate(polygons):
+            if i == outer_idx:
+                continue
+            if poly.is_empty or poly.area < MIN_AREA:
+                continue
+            # Use centroid-inside check with buffer fallback
+            c = poly.centroid
+            if outer_poly.contains(c) or (_outer_buf is not None and _outer_buf.contains(c)):
+                detail = _describe_hole(poly, outer_poly)
+                cx, cy = c.x, c.y
+                # de-duplicate by centroid proximity
+                if not _is_duplicate(cx, cy):
+                    seen_positions.append((cx, cy))
+                    hole_details.append(detail)
+    except Exception as exc:
+        print(f\"[ANALYZER] Polygon-track hole classification error: {exc}\")
+
+    # seen_positions now contains polygon-track hole centroids and will be
+    # extended by circle and other closed-entity holes to avoid duplicates.
+
+    # 4b. CIRCLE entities — use parser-provided center coordinate directly
     for item in (raw_entities or []):
         if item.get("type") != "CIRCLE":
             continue
@@ -273,9 +299,9 @@ def analyze_geometry(
         except Exception as exc:
             print(f"[ANALYZER] CIRCLE scan error: {exc}")
 
-    print(f"[ANALYZER] Circle holes (direct): {len(hole_details)}")
+    print(f"[ANALYZER] Circle holes (direct): {len([h for h in hole_details if h.get('type') == 'circle'])}")
 
-    # 4b. Other closed entities — LWPOLYLINE, POLYLINE, ELLIPSE, SPLINE
+    # 4c. Other closed entities — LWPOLYLINE, POLYLINE, ELLIPSE, SPLINE
     for item in (raw_entities or []):
         etype = item.get("type", "")
         if etype == "CIRCLE":

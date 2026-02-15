@@ -64,14 +64,35 @@ export default function App() {
     const API_BASE =
       import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
 
+    // Quick backend health check (3s timeout) to fail fast if backend is down
+    try {
+      const hc = new AbortController();
+      const hcTimer = setTimeout(() => hc.abort(), 3000);
+      const ping = await fetch(`${API_BASE}/health`, { signal: hc.signal });
+      clearTimeout(hcTimer);
+      if (!ping.ok) {
+        throw new Error('Backend not reachable. Please start the Python server.');
+      }
+    } catch {
+      setError('Cannot reach backend. Ensure Python server is running.');
+      setViewerStatus('Error loading file');
+      setIsLoading(false);
+      return;
+    }
+
     const formData = new FormData();
     formData.append('file', file);
 
     try {
+      // Upload with timeout (20s) to avoid getting stuck on network issues
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 20000);
       const response = await fetch(`${API_BASE}/upload`, {
         method: 'POST',
         body: formData,
+        signal: controller.signal,
       });
+      clearTimeout(timer);
 
       const data = await response.json();
 
@@ -95,7 +116,10 @@ export default function App() {
       );
 
     } catch (err) {
-      setError(err.message);
+      const msg = err?.name === 'AbortError'
+        ? 'Upload timed out. Please try again.'
+        : (err?.message || 'Upload failed');
+      setError(msg);
       setViewerStatus('Error loading file');
     } finally {
       setIsLoading(false);
