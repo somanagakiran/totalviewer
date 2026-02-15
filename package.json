@@ -4,10 +4,10 @@
   "description": "Total Viewer — Professional DXF Visualization & Analysis Tool",
   "private": true,
   "scripts": {
-    "dev": "concurrently --names \"BACKEND,FRONTEND\" --prefix-colors \"cyan,magenta\" \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
-    "dev:backend": "npm run dev --prefix backend",
+    "dev": "concurrently --names \"PYTHON,FRONTEND\" --prefix-colors \"cyan,magenta\" \"npm run dev:python\" \"npm run dev:frontend\"",
+    "dev:python": "cd python-backend && uvicorn main:app --host 127.0.0.1 --port 8000 --reload",
     "dev:frontend": "npm run dev --prefix frontend",
-    "install:all": "npm install --prefix backend && npm install --prefix frontend"
+    "install:all": "npm install --prefix frontend"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import TopBar from './components/TopBar';
 import LeftPanel from './components/LeftPanel';
 import RightPanel from './components/RightPanel';
@@ -10,7 +10,6 @@ export default function App() {
 
   const [uploadedFile, setUploadedFile] = useState(null);
   const [analysisResult, setAnalysisResult] = useState(null);
-  const [sessionId, setSessionId] = useState(null);   // ⭐ NEW
   const [geometry, setGeometry] = useState(null);
 
   const [isLoading, setIsLoading] = useState(false);
@@ -37,16 +36,6 @@ export default function App() {
   const handleToggleRight = useCallback(() => {
     setRightPanelOpen(v => !v);
     setLeftPanelOpen(false);
-  }, []);
-
-  // ─────────────────────────────────────────────
-  // RESTORE SESSION AFTER REFRESH
-  // ─────────────────────────────────────────────
-  useEffect(() => {
-    const savedSession = localStorage.getItem('session_id');
-    if (savedSession) {
-      setSessionId(savedSession);
-    }
   }, []);
 
   // ─────────────────────────────────────────────
@@ -90,10 +79,6 @@ export default function App() {
         throw new Error(data.detail || 'Upload failed');
       }
 
-      // ⭐ STORE SESSION ID SAFELY
-      setSessionId(data.session_id);
-      localStorage.setItem('session_id', data.session_id);
-
       const result = {
         ...data,
         entityCount: data.entities,
@@ -121,44 +106,60 @@ export default function App() {
 
   // ─────────────────────────────────────────────
   // ANALYZE
+  // Prefer calling /analyze with existing session_id.
+  // Falls back to re-upload if session is missing.
   // ─────────────────────────────────────────────
   const handleAnalyze = useCallback(async () => {
-
-    if (isAnalyzing) return;
-
-    if (!sessionId) {
-      setAnalyzeError('Session not found. Please re-upload the DXF file.');
+    if (isLoading || isAnalyzing) return;
+    if (!uploadedFile) {
+      setAnalyzeError('No file loaded. Please upload a DXF file first.');
       return;
     }
 
     const API_BASE =
       import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
 
-    setIsAnalyzing(true);
+    // If we have a session, call /analyze for a fast re-run
+    const sid = analysisResult?.session_id;
+    if (sid) {
+      try {
+        setAnalyzeError(null);
+        setIsAnalyzing(true);
+        setViewerStatus('Re-running analysis…');
 
-    try {
-      const response = await fetch(`${API_BASE}/analyze`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId }),
-      });
+        const resp = await fetch(`${API_BASE}/analyze`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sid }),
+        });
 
-      const data = await response.json();
+        const data = await resp.json();
+        if (!resp.ok) {
+          throw new Error(data.detail || 'Analyze failed');
+        }
 
-      if (!response.ok) {
-        throw new Error(data.detail || 'Analysis failed');
+        const updated = {
+          ...analysisResult,
+          ...data,
+        };
+        setAnalysisResult(updated);
+        setAnalysisComplete(true);
+        setRightPanelOpen(true);
+        setViewerStatus('Analysis complete');
+      } catch (err) {
+        // Fall back to re-upload on error
+        setAnalyzeError(err.message);
+        await handleFileUpload(uploadedFile);
+      } finally {
+        setIsAnalyzing(false);
       }
-
-      setAnalysisResult(prev => ({ ...prev, ...data }));
-      setAnalysisComplete(true);
-
-    } catch (err) {
-      setAnalyzeError(err.message);
-    } finally {
-      setIsAnalyzing(false);
+      return;
     }
 
-  }, [sessionId, isAnalyzing]);
+    // No session_id — re-upload the file to regenerate a session + results
+    await handleFileUpload(uploadedFile);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uploadedFile, isLoading, isAnalyzing, analysisResult]);
 
   const handleFitScreen = useCallback(() => {
     window.dispatchEvent(new CustomEvent('dxf-fit-screen'));
@@ -214,6 +215,7 @@ export default function App() {
           analysisComplete={analysisComplete}
           onAnalyze={handleAnalyze}
           analyzeError={analyzeError}
+          fileLoaded={!!uploadedFile}
           isOpen={rightPanelOpen}
           onClose={() => setRightPanelOpen(false)}
         />
