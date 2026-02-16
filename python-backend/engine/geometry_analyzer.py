@@ -46,9 +46,9 @@ MIN_AREA            = 0.01   # ignore polygons smaller than this (units²)
 FRAME_MIN_COVERAGE  = 0.97   # frame must cover ≥ 97 % of the bbox area
 FRAME_EDGE_REL_TOL  = 0.02   # frame edges within 2 % of max(W,H) of bbox edges
 ISOPERIMETRIC_RATIO = 50.0   # L²/A > 50 -> polygon is "hollow" (drawing frame)
-DEDUP_DISTANCE      = 0.05   # centroids closer than this are considered duplicates
-SNAP_PRECISION      = 1e-2   # coordinate grid for polygonize endpoint snapping
-MAX_POLYGONIZE_SEGS = 10000  # skip Track B polygonize above this — prevents hang
+DEDUP_DISTANCE      = 1.0    # centroids closer than this are considered duplicates
+SNAP_PRECISION      = 1e-3   # coordinate grid for polygonize endpoint snapping
+MAX_POLYGONIZE_SEGS = 300    # skip Track B polygonize above this — prevents hang
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -198,33 +198,28 @@ def analyze_geometry(
                 outer_idx  = -1
                 print("[ANALYZER] No container polygon found — using bounding box as outer boundary")
 
-    # ── 4. Classify holes — DIRECT ENTITY SCAN ───────────────────────────────
+    # ── 4. Unified contour-based hole detection ───────────────────────────────
     #
-    #   Instead of relying on polygon reconstruction chains (Track A/B/C), we
-    #   scan raw_entities directly — the same data the frontend visualiser uses.
+    # Holes are identified by TOPOLOGY, not entity type:
+    #   Any closed loop whose centroid lies inside the outer boundary = hole.
     #
-    #   • CIRCLE entities: the parser stores the exact center [cx, cy].
-    #     We test  Point(cx, cy)  against the outer boundary.  No tessellation,
-    #     no Point.buffer(), no polygon-centroid calculation needed.
-    #
-    #   • Other closed entities (LWPOLYLINE closed, POLYLINE closed, ELLIPSE,
-    #     SPLINE closed): build a Polygon from their tessellated points and test
-    #     their Shapely centroid against the outer boundary.
-    #
-    #   Deduplication: track accepted (cx, cy) positions; skip any new entity
-    #   whose position is within DEDUP_DISTANCE of an already-accepted hole.
-    #
-    # Pre-compute a tiny expansion of outer_poly for boundary-precision fallback.
+    # Sources checked in order (deduplication prevents double-counting):
+    #   a) Track A + B polygons — entity-type agnostic; covers circles, closed
+    #      polylines, ellipses, splines, AND combinations of LINE/ARC that form
+    #      closed loops (rectangles, triangles, slots, irregular polygons).
+    #   b) CIRCLE entities — direct center-point fallback in case Track A
+    #      tessellation missed a circle due to boundary precision.
+    #   c) Other closed raw entities — fallback for any closed entity not
+    #      captured by Track A.
+
+    max_dim = max(bounding_box.get("width", 1) or 1, bounding_box.get("height", 1) or 1)
     _outer_buf = None
     try:
-        # Use a scale-aware buffer so near-boundary holes are still included
-        max_dim = max(bounding_box.get("width", 1) or 1, bounding_box.get("height", 1) or 1)
-        _outer_buf = outer_poly.buffer(max_dim * 0.001)
+        _outer_buf = outer_poly.buffer(max_dim * 0.005)
     except Exception:
         pass
 
     def _pt_inside(px: float, py: float) -> bool:
-        """Return True if (px, py) is inside (or just touching) outer_poly."""
         pt = Point(px, py)
         if outer_poly.contains(pt):
             return True
@@ -232,41 +227,39 @@ def analyze_geometry(
             return True
         return False
 
-    seen_positions: list = []   # accepted (cx, cy) — for deduplication
+    seen_positions: list = []
 
     def _is_duplicate(px: float, py: float) -> bool:
-        for sx, sy in seen_positions:
-            if math.hypot(px - sx, py - sy) < DEDUP_DISTANCE:
-                return True
-        return False
+        return any(math.hypot(px - sx, py - sy) < DEDUP_DISTANCE for sx, sy in seen_positions)
 
     hole_details: list = []
 
-    # 4a. Holes from polygon tracks (Track A & B) — classify any interior rings
-    #     that are not the chosen outer boundary. This captures pockets formed
-    #     by chains of LINE/ARC segments that polygonize into closed loops.
-    try:
-        for i, poly in enumerate(polygons):
-            if i == outer_idx:
-                continue
-            if poly.is_empty or poly.area < MIN_AREA:
-                continue
-            # Use centroid-inside check with buffer fallback
-            c = poly.centroid
-            if outer_poly.contains(c) or (_outer_buf is not None and _outer_buf.contains(c)):
-                detail = _describe_hole(poly, outer_poly)
-                cx, cy = c.x, c.y
-                # de-duplicate by centroid proximity
-                if not _is_duplicate(cx, cy):
-                    seen_positions.append((cx, cy))
-                    hole_details.append(detail)
-    except Exception as exc:
-        print(f\"[ANALYZER] Polygon-track hole classification error: {exc}\")
+    # 4a. Track A + B polygons — primary path, handles ALL closed loop types.
+    deduped_polys = _dedup_by_centroid(polygons)
+    for poly in deduped_polys:
+        if poly.is_empty or poly.area < MIN_AREA:
+            continue
+        # Skip outer boundary (same area + high overlap)
+        if outer_poly.area > 0:
+            rel_diff = abs(poly.area - outer_poly.area) / outer_poly.area
+            if rel_diff < 0.05:
+                try:
+                    if outer_poly.intersection(poly).area / poly.area > 0.90:
+                        continue
+                except Exception:
+                    pass
+        c = poly.centroid
+        cx, cy = c.x, c.y
+        if _is_duplicate(cx, cy):
+            continue
+        if not _pt_inside(cx, cy):
+            continue
+        seen_positions.append((cx, cy))
+        hole_details.append(_describe_hole(poly, outer_poly))
 
-    # seen_positions now contains polygon-track hole centroids and will be
-    # extended by circle and other closed-entity holes to avoid duplicates.
+    print(f"[ANALYZER] Track A+B holes: {len(hole_details)}")
 
-    # 4b. CIRCLE entities — use parser-provided center coordinate directly
+    # 4b. CIRCLE entities — direct center-point fallback.
     for item in (raw_entities or []):
         if item.get("type") != "CIRCLE":
             continue
@@ -301,13 +294,14 @@ def analyze_geometry(
 
     print(f"[ANALYZER] Circle holes (direct): {len([h for h in hole_details if h.get('type') == 'circle'])}")
 
-    # 4c. Other closed entities — LWPOLYLINE, POLYLINE, ELLIPSE, SPLINE
+    # 4c. Other closed raw entities — fallback for any closed shape not
+    #     captured by Track A (LWPOLYLINE, POLYLINE, ELLIPSE, SPLINE).
     for item in (raw_entities or []):
         etype = item.get("type", "")
         if etype == "CIRCLE":
-            continue                    # handled above
+            continue
         if not item.get("closed"):
-            continue                    # only closed shapes are internal holes
+            continue
         pts = item.get("points", [])
         if len(pts) < 3:
             continue
@@ -319,7 +313,6 @@ def analyze_geometry(
                 continue
             if poly.is_empty or poly.area < MIN_AREA:
                 continue
-            # Skip if this closed shape is the outer boundary itself
             if outer_poly.area > 0:
                 rel_diff = abs(poly.area - outer_poly.area) / outer_poly.area
                 if rel_diff < 0.05:
@@ -329,8 +322,7 @@ def analyze_geometry(
                             continue
                     except Exception:
                         pass
-            cx = poly.centroid.x
-            cy = poly.centroid.y
+            cx, cy = poly.centroid.x, poly.centroid.y
             if _is_duplicate(cx, cy):
                 continue
             if not _pt_inside(cx, cy):
@@ -342,47 +334,21 @@ def analyze_geometry(
         except Exception as exc:
             print(f"[ANALYZER] {etype} scan error: {exc}")
 
-    print(f"[ANALYZER] Total holes (direct scan): {len(hole_details)}")
+    print(f"[ANALYZER] Total holes detected: {len(hole_details)}")
 
-    # ── 6. Outer perimeter ────────────────────────────────────────────────────
+    # ── 5. Outer perimeter ────────────────────────────────────────────────────
     try:
         perimeter = outer_poly.exterior.length
     except Exception:
         perimeter = _fallback_perimeter(bounding_box)
 
-    print(f"[ANALYZER] Final holes (after dedup): {len(hole_details)}")
-
-    # ── 7. Fallback: simple circle count ─────────────────────────────────────
-    #
-    #   When the polygon containment pipeline produces zero holes (outer
-    #   boundary could not be reconstructed or is too tight), fall back to
-    #   counting all CIRCLE entities with radius > 0 as holes.  This ensures
-    #   the UI always reflects the number of circular cutouts even when
-    #   Shapely's containment checks fail on a particular drawing.
-    #
-    #   hole_details stays as-is (polygon scan results, possibly empty).
-    #   Only the count keys are overridden.
-    #
-    final_hole_count = len(hole_details)
-
-    if final_hole_count == 0 and raw_entities:
-        circle_hole_count = count_circle_holes(raw_entities)
-        if circle_hole_count > 0:
-            final_hole_count = circle_hole_count
-            print(f"[ANALYZER] Containment scan returned 0 holes — "
-                  f"using circle-count fallback: {final_hole_count}")
-        else:
-            print(f"[ANALYZER] Circle-count fallback also returned 0 holes.")
-
     return {
-        # Legacy keys (frontend compatibility)
-        "holes":               final_hole_count,
+        "holes":               len(hole_details),
         "perimeter":           round(perimeter, 3),
         "outer_boundary_area": round(outer_poly.area, 3),
         "hole_details":        hole_details,
-        # Extended keys
-        "total_holes":                final_hole_count,
-        "internal_cutouts_detected":  final_hole_count,
+        "total_holes":                len(hole_details),
+        "internal_cutouts_detected":  len(hole_details),
         "outer_perimeter":            round(perimeter, 3),
     }
 
@@ -641,6 +607,41 @@ def _deduplicate(pts: list) -> list:
         if abs(p[0] - out[-1][0]) > 1e-9 or abs(p[1] - out[-1][1]) > 1e-9:
             out.append(p)
     return out
+
+
+def _dedup_by_centroid(polygons: list) -> list:
+    """
+    Remove polygon duplicates that arise from multi-track reconstruction.
+
+    Two polygons are considered the same shape when:
+      - Their centroids are within DEDUP_DISTANCE of each other, AND
+      - Their areas agree within 5 %.
+
+    This eliminates duplicates such as:
+      - CIRCLE appearing in Track A (tessellated) and Track C (analytical buffer)
+      - LINE-based loops reconstructed by both _chain_segments_to_loops (Track A)
+        and _polygonize_open_edges (Track B)
+
+    The first occurrence is kept; later duplicates are dropped.
+    """
+    unique: list = []
+    for p in polygons:
+        try:
+            c = p.centroid
+            is_dup = False
+            for q in unique:
+                try:
+                    if c.distance(q.centroid) < DEDUP_DISTANCE:
+                        if q.area > 0 and abs(p.area - q.area) / q.area < 0.05:
+                            is_dup = True
+                            break
+                except Exception:
+                    pass
+            if not is_dup:
+                unique.append(p)
+        except Exception:
+            unique.append(p)
+    return unique
 
 
 def _synthesize_bbox_polygon(bounding_box: dict) -> "Polygon":
@@ -973,3 +974,46 @@ def _fallback_perimeter(bbox: dict) -> float:
     w = bbox.get("width",  0)
     h = bbox.get("height", 0)
     return round(2 * (w + h), 3)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# EDGE DEBUG HELPERS  (imported by main.py)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def build_edges_from_entities(raw_entities: list, include_closed: bool = True) -> list:
+    """
+    Return a list of snapped line segments built from raw entity point lists.
+    Each segment is [[x1, y1], [x2, y2]].
+    """
+    edges: list = []
+    if not raw_entities:
+        return edges
+
+    def _snap(pt) -> tuple:
+        return (
+            round(float(pt[0]) / SNAP_PRECISION) * SNAP_PRECISION,
+            round(float(pt[1]) / SNAP_PRECISION) * SNAP_PRECISION,
+        )
+
+    for item in raw_entities:
+        if not include_closed and item.get("closed"):
+            continue
+        pts = item.get("points", [])
+        if len(pts) < 2:
+            continue
+        try:
+            coords = [_snap(p) for p in pts]
+            deduped = [coords[0]]
+            for c in coords[1:]:
+                if abs(c[0] - deduped[-1][0]) > 1e-9 or abs(c[1] - deduped[-1][1]) > 1e-9:
+                    deduped.append(c)
+            for i in range(len(deduped) - 1):
+                a = deduped[i]
+                b = deduped[i + 1]
+                if abs(a[0] - b[0]) < 1e-12 and abs(a[1] - b[1]) < 1e-12:
+                    continue
+                edges.append([[round(a[0], 6), round(a[1], 6)], [round(b[0], 6), round(b[1], 6)]])
+        except Exception:
+            continue
+
+    return edges

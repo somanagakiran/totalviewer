@@ -46,7 +46,6 @@ export default function RightPanel({
   analysisComplete,
   onAnalyze,
   analyzeError,
-  fileLoaded,
 }) {
   const panelRef  = useRef(null);
   const hasFileData = !!analysisResult;
@@ -68,7 +67,10 @@ export default function RightPanel({
     }
   }, [analysisComplete]);
 
-  const btnDisabled = !fileLoaded || isAnalyzing || isLoading;
+  // Button is disabled only when no DXF has been loaded yet, or while a
+  // request is already in flight.  The session key (session_id) lives inside
+  // analysisResult — handleAnalyze reads it directly from there.
+  const btnDisabled = !hasFileData || isAnalyzing || isLoading;
 
   return (
     <aside ref={panelRef} className={`right-panel${isOpen ? ' is-open' : ''}`}>
@@ -86,7 +88,7 @@ export default function RightPanel({
             {isLoading ? 'Parsing' : 'Analyzing'}
           </span>
         )}
-        {fileLoaded && !hasAnalysis && !isAnalyzing && !isLoading && (
+        {hasFileData && !hasAnalysis && !isAnalyzing && !isLoading && (
           <span className="status-badge ready">
             <span className="badge-dot-ready" />
             Ready

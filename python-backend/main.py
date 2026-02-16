@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import tempfile
@@ -8,7 +8,8 @@ import time
 import asyncio
 
 from engine.dxf_parser import parse_dxf
-from engine.geometry_analyzer import analyze_geometry
+from engine.geometry_analyzer_v4 import analyze_geometry
+from engine.geometry_analyzer import build_edges_from_entities
 
 
 # ─────────────────────────────────────────────────────────────
@@ -112,6 +113,7 @@ async def upload_dxf(file: UploadFile = File(...)):
             "holes": 0, "total_holes": 0, "internal_cutouts_detected": 0,
             "perimeter": 0.0, "outer_perimeter": 0.0, "outer_boundary_area": 0.0,
             "hole_details": [],
+            "hole_geometries": [],
         }
         try:
             analysis = await asyncio.wait_for(
@@ -146,14 +148,29 @@ async def upload_dxf(file: UploadFile = File(...)):
             "outer_perimeter":            analysis["outer_perimeter"],
             "outer_boundary_area":        analysis["outer_boundary_area"],
             "hole_details":               analysis.get("hole_details", []),
+            "hole_geometries":            analysis.get("hole_geometries", []),
         }
 
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
-
     finally:
+        # Clean up temp file
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)
+
+
+# ─────────────────────────────────────────────────────────────
+# DEBUG: Return snapped edges used for polygonization
+# ─────────────────────────────────────────────────────────────
+@app.get("/debug/edges")
+async def debug_edges(session_id: str = Query(..., description="Session id from /upload"),
+                      include_closed: bool = Query(True, description="Include edges from closed contours")):
+    session = SESSIONS.get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    raw_entities = session.get("raw_entities", [])
+    edges = build_edges_from_entities(raw_entities, include_closed=include_closed)
+    return {"count": len(edges), "edges": edges}
 
 
 # ─────────────────────────────────────────────────────────────
@@ -189,6 +206,7 @@ async def analyze_dxf(body: AnalyzeRequest):
             "total_holes": analysis["total_holes"],
             "internal_cutouts_detected": analysis["internal_cutouts_detected"],
             "hole_details": analysis.get("hole_details", []),
+            "hole_geometries": analysis.get("hole_geometries", []),
             "perimeter": analysis["perimeter"],
             "outer_perimeter": analysis["outer_perimeter"],
             "outer_boundary_area": analysis["outer_boundary_area"],
