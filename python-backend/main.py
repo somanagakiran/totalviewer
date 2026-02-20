@@ -96,11 +96,16 @@ def store_part(
     internal_perimeter: float,
     total_perimeter: float,
 ) -> Optional[Part]:
-    """Persist one Part row. Returns the saved object, or None on failure."""
+    """Upsert one Part row (delete existing by file_name, then insert).
+    Returns the saved object, or None on failure / DB unavailable."""
     if _SessionLocal is None:
         return None
     db = _SessionLocal()
     try:
+        # Remove any previous record for the same file to avoid duplicates.
+        # A re-upload is intentional, so overwrite is the correct behaviour.
+        db.query(Part).filter(Part.file_name == file_name).delete()
+        db.flush()
         part = Part(
             file_name=file_name,
             part_name=part_name,
@@ -243,6 +248,17 @@ async def upload_dxf(file: UploadFile = File(...)):
         except Exception as exc:
             print(f"[UPLOAD] Inline analysis error: {exc}")
             analysis = _fallback_analysis
+
+        # Persist to DB — runs after analysis, never blocks the response
+        store_part(
+            file_name=file.filename,
+            part_name=os.path.splitext(file.filename)[0],
+            material="",
+            holes=analysis["holes"],
+            external_perimeter=analysis.get("external_perimeter", 0.0),
+            internal_perimeter=analysis.get("internal_perimeter", 0.0),
+            total_perimeter=analysis["perimeter"],
+        )
 
         return {
             "session_id": session_id,
