@@ -66,12 +66,16 @@ _SessionLocal = None
 
 if DATABASE_URL:
     try:
-        _engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+        _engine = create_engine(
+            DATABASE_URL,
+            pool_pre_ping=True,
+            connect_args={"sslmode": "require"},
+        )
         _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
         Base.metadata.create_all(bind=_engine)
         print("[DB] Connected to Supabase PostgreSQL — tables ready")
     except Exception as _db_exc:
-        print(f"[DB] Connection failed: {_db_exc}")
+        print(f"[DB] Connection failed: {_db_exc!r}")
 else:
     print("[DB] DATABASE_URL not set — database features disabled")
 
