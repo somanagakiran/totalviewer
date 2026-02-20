@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import json
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from engine.dxf_parser import parse_dxf
@@ -75,6 +75,13 @@ if DATABASE_URL:
         )
         _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
         Base.metadata.create_all(bind=_engine)
+        # Idempotent migration — adds geometry_json if the column is missing
+        # (create_all never alters existing tables)
+        with _engine.connect() as _conn:
+            _conn.execute(text(
+                "ALTER TABLE parts ADD COLUMN IF NOT EXISTS geometry_json TEXT"
+            ))
+            _conn.commit()
         print("[DB] Connected to Supabase PostgreSQL — tables ready")
     except Exception as _db_exc:
         print(f"[DB] Connection failed: {_db_exc!r}")
@@ -378,6 +385,9 @@ def get_parts():
     db = _get_db()
     try:
         return db.query(Part).order_by(Part.created_at.desc()).all()
+    except Exception as exc:
+        print(f"[DB] GET /parts error: {exc!r}")
+        raise HTTPException(status_code=500, detail=str(exc))
     finally:
         db.close()
 
