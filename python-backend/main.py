@@ -9,8 +9,7 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Optional
 
-import json
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, JSON, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from engine.dxf_parser import parse_dxf
@@ -45,15 +44,8 @@ class Part(Base):
     external_perimeter = Column(Float, nullable=False)
     internal_perimeter = Column(Float, nullable=False)
     total_perimeter    = Column(Float, nullable=False)
+    geometry_json      = Column(JSON, nullable=True)
     created_at         = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-
-
-class PartGeometry(Base):
-    __tablename__ = "part_geometries"
-
-    id      = Column(Integer, primary_key=True, index=True)
-    part_id = Column(Integer, nullable=False, index=True)
-    data    = Column(Text, nullable=False)   # JSON-encoded geometry list
 
 
 class PartResponse(BaseModel):
@@ -82,6 +74,16 @@ if DATABASE_URL:
         )
         _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
         Base.metadata.create_all(bind=_engine)
+        # Idempotent: adds geometry_json to the existing parts table if absent.
+        # Safe on fresh DBs too — IF NOT EXISTS is a no-op when column already exists.
+        try:
+            with _engine.connect() as _mc:
+                _mc.execute(text(
+                    "ALTER TABLE parts ADD COLUMN IF NOT EXISTS geometry_json JSON"
+                ))
+                _mc.commit()
+        except Exception as _me:
+            print(f"[DB] Migration note: {_me}")
         print("[DB] Connected to Supabase PostgreSQL — tables ready")
     except Exception as _db_exc:
         print(f"[DB] Connection failed: {_db_exc!r}")
@@ -104,18 +106,13 @@ def store_part(
     external_perimeter: float,
     internal_perimeter: float,
     total_perimeter: float,
-    geometry_json: Optional[str] = None,
+    geometry=None,
 ) -> Optional[Part]:
-    """Upsert one Part row and its geometry.
-    Deletes any existing rows for the same file_name, then inserts fresh ones."""
+    """Upsert one Part row (delete existing by file_name, then insert)."""
     if _SessionLocal is None:
         return None
     db = _SessionLocal()
     try:
-        # Remove previous part and its geometry (re-upload overwrites)
-        old_parts = db.query(Part).filter(Part.file_name == file_name).all()
-        for old in old_parts:
-            db.query(PartGeometry).filter(PartGeometry.part_id == old.id).delete()
         db.query(Part).filter(Part.file_name == file_name).delete()
         db.flush()
 
@@ -127,13 +124,9 @@ def store_part(
             external_perimeter=external_perimeter,
             internal_perimeter=internal_perimeter,
             total_perimeter=total_perimeter,
+            geometry_json=geometry,
         )
         db.add(part)
-        db.flush()  # populate part.id before inserting geometry row
-
-        if geometry_json:
-            db.add(PartGeometry(part_id=part.id, data=geometry_json))
-
         db.commit()
         db.refresh(part)
         return part
@@ -276,7 +269,7 @@ async def upload_dxf(file: UploadFile = File(...)):
             external_perimeter=analysis.get("external_perimeter", 0.0),
             internal_perimeter=analysis.get("internal_perimeter", 0.0),
             total_perimeter=analysis["perimeter"],
-            geometry_json=json.dumps(parsed["geometry"]),
+            geometry=parsed["geometry"],
         )
 
         return {
@@ -380,10 +373,9 @@ def get_part_geometry(part_id: int):
         part = db.query(Part).filter(Part.id == part_id).first()
         if part is None:
             raise HTTPException(status_code=404, detail="Part not found")
-        geom = db.query(PartGeometry).filter(PartGeometry.part_id == part_id).first()
-        if not geom:
+        if not part.geometry_json:
             raise HTTPException(status_code=404, detail="Geometry not stored for this part")
-        return json.loads(geom.data)
+        return part.geometry_json
     finally:
         db.close()
 
@@ -407,7 +399,6 @@ def delete_part(part_id: int):
         part = db.query(Part).filter(Part.id == part_id).first()
         if part is None:
             raise HTTPException(status_code=404, detail="Part not found")
-        db.query(PartGeometry).filter(PartGeometry.part_id == part_id).delete()
         db.delete(part)
         db.commit()
         return {"deleted": part_id}
