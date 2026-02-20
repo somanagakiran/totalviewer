@@ -6,10 +6,116 @@ import os
 import uuid
 import time
 import asyncio
+from datetime import datetime, timezone
+from typing import Optional
+
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 from engine.dxf_parser import parse_dxf
 from engine.geometry_analyzer_v4 import analyze_geometry
 from engine.geometry_analyzer import build_edges_from_entities
+
+
+# ─────────────────────────────────────────────────────────────
+# DATABASE
+# ─────────────────────────────────────────────────────────────
+
+_raw_db_url = os.getenv("DATABASE_URL", "")
+
+# Supabase/Heroku use "postgres://" — SQLAlchemy requires "postgresql://"
+DATABASE_URL = (
+    _raw_db_url.replace("postgres://", "postgresql://", 1)
+    if _raw_db_url.startswith("postgres://")
+    else _raw_db_url
+)
+
+Base = declarative_base()
+
+
+class Part(Base):
+    __tablename__ = "parts"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    file_name  = Column(String, nullable=False)
+    part_name  = Column(String, nullable=False)
+    material   = Column(String, nullable=False)
+    holes      = Column(Integer, nullable=False)
+    ep         = Column(Float, nullable=False)
+    ip         = Column(Float, nullable=False)
+    total      = Column(Float, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class PartResponse(BaseModel):
+    id:         int
+    file_name:  str
+    part_name:  str
+    material:   str
+    holes:      int
+    ep:         float
+    ip:         float
+    total:      float
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+_engine = None
+_SessionLocal = None
+
+if DATABASE_URL:
+    try:
+        _engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+        _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
+        Base.metadata.create_all(bind=_engine)
+        print("[DB] Connected to Supabase PostgreSQL — tables ready")
+    except Exception as _db_exc:
+        print(f"[DB] Connection failed: {_db_exc}")
+else:
+    print("[DB] DATABASE_URL not set — database features disabled")
+
+
+def _get_db():
+    """Return a new DB session, or raise 503 if DB is not configured."""
+    if _SessionLocal is None:
+        raise HTTPException(status_code=503, detail="Database not configured")
+    return _SessionLocal()
+
+
+def store_part(
+    file_name: str,
+    part_name: str,
+    material: str,
+    holes: int,
+    ep: float,
+    ip: float,
+    total: float,
+) -> Optional[Part]:
+    """Persist one Part row. Returns the saved object, or None on failure."""
+    if _SessionLocal is None:
+        return None
+    db = _SessionLocal()
+    try:
+        part = Part(
+            file_name=file_name,
+            part_name=part_name,
+            material=material,
+            holes=holes,
+            ep=ep,
+            ip=ip,
+            total=total,
+        )
+        db.add(part)
+        db.commit()
+        db.refresh(part)
+        return part
+    except Exception as exc:
+        db.rollback()
+        print(f"[DB] store_part error: {exc}")
+        return None
+    finally:
+        db.close()
 
 
 # ─────────────────────────────────────────────────────────────
@@ -222,3 +328,35 @@ async def analyze_dxf(body: AnalyzeRequest):
 
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ─────────────────────────────────────────────────────────────
+# PARTS ENDPOINTS
+# ─────────────────────────────────────────────────────────────
+
+@app.get("/parts", response_model=list[PartResponse])
+def get_parts():
+    db = _get_db()
+    try:
+        return db.query(Part).order_by(Part.created_at.desc()).all()
+    finally:
+        db.close()
+
+
+@app.delete("/parts/{part_id}")
+def delete_part(part_id: int):
+    db = _get_db()
+    try:
+        part = db.query(Part).filter(Part.id == part_id).first()
+        if part is None:
+            raise HTTPException(status_code=404, detail="Part not found")
+        db.delete(part)
+        db.commit()
+        return {"deleted": part_id}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        db.close()
