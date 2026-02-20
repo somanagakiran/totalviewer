@@ -36,27 +36,27 @@ Base = declarative_base()
 class Part(Base):
     __tablename__ = "parts"
 
-    id         = Column(Integer, primary_key=True, index=True)
-    file_name  = Column(String, nullable=False)
-    part_name  = Column(String, nullable=False)
-    material   = Column(String, nullable=False)
-    holes      = Column(Integer, nullable=False)
-    ep         = Column(Float, nullable=False)
-    ip         = Column(Float, nullable=False)
-    total      = Column(Float, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    id                 = Column(Integer, primary_key=True, index=True)
+    file_name          = Column(String, nullable=False)
+    part_name          = Column(String, nullable=False)
+    material           = Column(String, nullable=False)
+    holes              = Column(Integer, nullable=False)
+    external_perimeter = Column(Float, nullable=False)
+    internal_perimeter = Column(Float, nullable=False)
+    total_perimeter    = Column(Float, nullable=False)
+    created_at         = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class PartResponse(BaseModel):
-    id:         int
-    file_name:  str
-    part_name:  str
-    material:   str
-    holes:      int
-    ep:         float
-    ip:         float
-    total:      float
-    created_at: datetime
+    id:                 int
+    file_name:          str
+    part_name:          str
+    material:           str
+    holes:              int
+    external_perimeter: float
+    internal_perimeter: float
+    total_perimeter:    float
+    created_at:         datetime
 
     model_config = {"from_attributes": True}
 
@@ -88,9 +88,9 @@ def store_part(
     part_name: str,
     material: str,
     holes: int,
-    ep: float,
-    ip: float,
-    total: float,
+    external_perimeter: float,
+    internal_perimeter: float,
+    total_perimeter: float,
 ) -> Optional[Part]:
     """Persist one Part row. Returns the saved object, or None on failure."""
     if _SessionLocal is None:
@@ -102,9 +102,9 @@ def store_part(
             part_name=part_name,
             material=material,
             holes=holes,
-            ep=ep,
-            ip=ip,
-            total=total,
+            external_perimeter=external_perimeter,
+            internal_perimeter=internal_perimeter,
+            total_perimeter=total_perimeter,
         )
         db.add(part)
         db.commit()
