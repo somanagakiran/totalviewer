@@ -186,6 +186,12 @@ export default function App() {
     setRows(prev => prev.map(row => row.id === id ? { ...row, [field]: value } : row));
   }, []);
 
+  const handleRemovePart = useCallback((partId) => {
+    setRows(prev => prev.filter(p => p.id !== partId));
+    setGeometryParts(prev => prev.filter(p => p.id !== partId));
+    setSelectedRowId(prev => (prev === partId ? null : prev));
+  }, []);
+
   const handleSelectRow = useCallback((rowId) => {
     const row = rows.find(r => r.id === rowId);
     if (!row) return;
@@ -252,6 +258,7 @@ export default function App() {
         onUpdateRow={handleUpdateRow}
         selectedRowId={selectedRowId}
         onSelectRow={handleSelectRow}
+        onRemoveRow={handleRemovePart}
         partsOpen={partsOpen}
         onToggleTable={() => setPartsOpen(v => !v)}
       />

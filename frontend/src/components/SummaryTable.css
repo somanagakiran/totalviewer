@@ -176,6 +176,39 @@ td.st-num {
   font-weight: 600;
 }
 
+/* Remove button column */
+.col-remove { width: 36px; }
+
+.st-remove-cell {
+  text-align: center;
+  padding: 0 6px;
+}
+
+.st-remove-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--text-secondary, #8b949e);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.st-row:hover .st-remove-btn {
+  opacity: 1;
+}
+
+.st-remove-btn:hover {
+  background: rgba(248, 81, 73, 0.15);
+  border-color: rgba(248, 81, 73, 0.4);
+  color: #f85149;
+}
+
 /* File name truncation */
 .st-filename {
   max-width: 180px;

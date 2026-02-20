@@ -1,6 +1,6 @@
 import './SummaryTable.css';
 
-export default function SummaryTable({ rows, onUpdateRow, selectedRowId, onSelectRow, partsOpen, onToggleTable }) {
+export default function SummaryTable({ rows, onUpdateRow, selectedRowId, onSelectRow, onRemoveRow, partsOpen, onToggleTable }) {
   if (rows.length === 0) return null;
 
   return (
@@ -39,6 +39,7 @@ export default function SummaryTable({ rows, onUpdateRow, selectedRowId, onSelec
             <col className="col-num" />
             <col className="col-num" />
             <col className="col-num" />
+            <col className="col-remove" />
           </colgroup>
           <thead>
             <tr>
@@ -49,6 +50,7 @@ export default function SummaryTable({ rows, onUpdateRow, selectedRowId, onSelec
               <th className="st-num">EP</th>
               <th className="st-num">IP</th>
               <th className="st-num">Total</th>
+              <th />
             </tr>
           </thead>
           <tbody>
@@ -80,6 +82,18 @@ export default function SummaryTable({ rows, onUpdateRow, selectedRowId, onSelec
                 <td className="st-num">{row.ep.toFixed(2)}</td>
                 <td className="st-num">{row.ip.toFixed(2)}</td>
                 <td className="st-num st-total">{(row.ep + row.ip).toFixed(2)}</td>
+                <td className="st-remove-cell" onClick={e => e.stopPropagation()}>
+                  <button
+                    className="st-remove-btn"
+                    title="Remove part"
+                    onClick={() => onRemoveRow(row.id)}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <line x1="18" y1="6" x2="6" y2="18"/>
+                      <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
