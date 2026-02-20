@@ -9,7 +9,8 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime
+import json
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from engine.dxf_parser import parse_dxf
@@ -45,6 +46,14 @@ class Part(Base):
     internal_perimeter = Column(Float, nullable=False)
     total_perimeter    = Column(Float, nullable=False)
     created_at         = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class PartGeometry(Base):
+    __tablename__ = "part_geometries"
+
+    id      = Column(Integer, primary_key=True, index=True)
+    part_id = Column(Integer, nullable=False, index=True)
+    data    = Column(Text, nullable=False)   # JSON-encoded geometry list
 
 
 class PartResponse(BaseModel):
@@ -95,17 +104,21 @@ def store_part(
     external_perimeter: float,
     internal_perimeter: float,
     total_perimeter: float,
+    geometry_json: Optional[str] = None,
 ) -> Optional[Part]:
-    """Upsert one Part row (delete existing by file_name, then insert).
-    Returns the saved object, or None on failure / DB unavailable."""
+    """Upsert one Part row and its geometry.
+    Deletes any existing rows for the same file_name, then inserts fresh ones."""
     if _SessionLocal is None:
         return None
     db = _SessionLocal()
     try:
-        # Remove any previous record for the same file to avoid duplicates.
-        # A re-upload is intentional, so overwrite is the correct behaviour.
+        # Remove previous part and its geometry (re-upload overwrites)
+        old_parts = db.query(Part).filter(Part.file_name == file_name).all()
+        for old in old_parts:
+            db.query(PartGeometry).filter(PartGeometry.part_id == old.id).delete()
         db.query(Part).filter(Part.file_name == file_name).delete()
         db.flush()
+
         part = Part(
             file_name=file_name,
             part_name=part_name,
@@ -116,6 +129,11 @@ def store_part(
             total_perimeter=total_perimeter,
         )
         db.add(part)
+        db.flush()  # populate part.id before inserting geometry row
+
+        if geometry_json:
+            db.add(PartGeometry(part_id=part.id, data=geometry_json))
+
         db.commit()
         db.refresh(part)
         return part
@@ -258,6 +276,7 @@ async def upload_dxf(file: UploadFile = File(...)):
             external_perimeter=analysis.get("external_perimeter", 0.0),
             internal_perimeter=analysis.get("internal_perimeter", 0.0),
             total_perimeter=analysis["perimeter"],
+            geometry_json=json.dumps(parsed["geometry"]),
         )
 
         return {
@@ -361,7 +380,10 @@ def get_part_geometry(part_id: int):
         part = db.query(Part).filter(Part.id == part_id).first()
         if part is None:
             raise HTTPException(status_code=404, detail="Part not found")
-        raise HTTPException(status_code=404, detail="Geometry not stored for this part")
+        geom = db.query(PartGeometry).filter(PartGeometry.part_id == part_id).first()
+        if not geom:
+            raise HTTPException(status_code=404, detail="Geometry not stored for this part")
+        return json.loads(geom.data)
     finally:
         db.close()
 
@@ -385,6 +407,7 @@ def delete_part(part_id: int):
         part = db.query(Part).filter(Part.id == part_id).first()
         if part is None:
             raise HTTPException(status_code=404, detail="Part not found")
+        db.query(PartGeometry).filter(PartGeometry.part_id == part_id).delete()
         db.delete(part)
         db.commit()
         return {"deleted": part_id}
