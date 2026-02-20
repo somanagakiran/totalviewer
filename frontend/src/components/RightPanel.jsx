@@ -54,7 +54,7 @@ export default function RightPanel({
   // Extract part data for multi-part support
   const part = analysisResult?.parts?.[0];
   const internalPerimeter = part?.internal_perimeter ?? analysisResult?.internal_perimeter;
-  const externalPerimeter = part?.external_perimeter ?? analysisResult?.external_perimeter;
+  const externalPerimeter = part?.external_perimeter ?? analysisResult?.external_perimeter ?? analysisResult?.perimeter;
 
   // Auto-dismiss toast after 5 s whenever a new error arrives
   const [toastVisible, setToastVisible] = useState(false);
@@ -137,20 +137,6 @@ export default function RightPanel({
               icon={
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                   <rect x="3" y="3" width="18" height="18" rx="2"/>
-                  <path d="M3 9h18M3 15h18M9 3v18M15 3v18" strokeOpacity="0.4"/>
-                </svg>
-              }
-              label="Outer Perimeter"
-              value={hasAnalysis ? analysisResult.perimeter : null}
-              unit={analysisResult?.units && analysisResult.units !== 'Unknown' ? analysisResult.units.slice(0, 2).toLowerCase() : 'u'}
-              color="#3fb950"
-              description="Outer boundary length"
-            />
-
-            <MetricCard
-              icon={
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <rect x="3" y="3" width="18" height="18" rx="2"/>
                   <line x1="3" y1="3" x2="21" y2="3"/>
                   <line x1="21" y1="3" x2="21" y2="21"/>
                   <line x1="21" y1="21" x2="3" y2="21"/>
@@ -181,6 +167,23 @@ export default function RightPanel({
               color="#a855f7"
               description="Sum of all hole perimeters"
             />
+
+            {hasAnalysis && externalPerimeter != null && internalPerimeter != null && (
+              <MetricCard
+                icon={
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <path d="M3 12h4M17 12h4M12 3v4M12 17v4"/>
+                    <rect x="5" y="5" width="14" height="14" rx="1"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                }
+                label="Total Cutting Length"
+                value={parseFloat((externalPerimeter + internalPerimeter).toFixed(2))}
+                unit={analysisResult?.units && analysisResult.units !== 'Unknown' ? analysisResult.units.slice(0, 2).toLowerCase() : 'u'}
+                color="#facc15"
+                description="EP + IP — total cut path"
+              />
+            )}
           </>
         )}
       </div>
