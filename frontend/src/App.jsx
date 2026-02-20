@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import TopBar from './components/TopBar';
 import LeftPanel from './components/LeftPanel';
 import DXFViewer from './components/DXFViewer';
@@ -31,6 +31,43 @@ export default function App() {
 
   // Stores whichever backend URL (Render or localhost) responded successfully
   const apiBaseRef = useRef(null);
+
+  // ─────────────────────────────────────────────
+  // LOAD PERSISTED PARTS FROM DB ON MOUNT
+  // ─────────────────────────────────────────────
+  useEffect(() => {
+    const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/parts`);
+        if (!res.ok) return;
+        const parts = await res.json();
+        if (!Array.isArray(parts) || parts.length === 0) return;
+
+        const loaded = parts.map(p => ({
+          id:             p.id,
+          partName:       p.part_name,
+          fileName:       p.file_name,
+          fileSize:       0,
+          material:       p.material || 'MS',
+          holes:          p.holes ?? 0,
+          ep:             p.external_perimeter ?? 0,
+          ip:             p.internal_perimeter ?? 0,
+          geometry:       null,
+          analysisResult: { entityCount: 0, layers: [] },
+        }));
+
+        setRows(loaded);
+
+        // Advance counter past existing DB ids so new uploads get unique local ids
+        const maxId = Math.max(...parts.map(p => p.id));
+        rowCounterRef.current = Math.max(rowCounterRef.current, maxId);
+      } catch (err) {
+        console.error('[Parts] Failed to load from DB:', err);
+      }
+    })();
+  }, []);
 
   const closeAllPanels = useCallback(() => {
     setLeftPanelOpen(false);
