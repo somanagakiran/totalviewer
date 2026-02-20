@@ -1,0 +1,186 @@
+.summary-table-wrap {
+  flex-shrink: 0;
+  background: var(--bg-secondary, #161b22);
+  border-top: 1px solid var(--border, #30363d);
+}
+
+/* ── Header bar ────────────────────────────────────────────────────────── */
+.st-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 14px;
+  background: var(--bg-tertiary, #0d1117);
+  border-bottom: 1px solid var(--border, #30363d);
+  user-select: none;
+}
+
+.st-header-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-secondary, #8b949e);
+}
+
+.st-header-count {
+  background: var(--bg-hover, #1c2128);
+  border: 1px solid var(--border, #30363d);
+  border-radius: 10px;
+  font-size: 10px;
+  padding: 0 6px;
+  color: var(--text-secondary, #8b949e);
+}
+
+.st-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-secondary, #8b949e);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.st-toggle-btn:hover {
+  background: var(--bg-hover, #1c2128);
+  border-color: var(--border, #30363d);
+  color: var(--text-primary, #e6edf3);
+}
+
+/* ── Collapsible table area ────────────────────────────────────────────── */
+.st-table-collapse {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.st-table-collapse--open {
+  max-height: 160px;
+  overflow-x: auto;
+  overflow-y: auto;
+}
+
+.summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  color: var(--text-primary, #e6edf3);
+  white-space: nowrap;
+}
+
+.summary-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-tertiary, #0d1117);
+}
+
+.summary-table th {
+  padding: 6px 14px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary, #8b949e);
+  border-bottom: 1px solid var(--border, #30363d);
+}
+
+.summary-table td {
+  padding: 5px 14px;
+  border-bottom: 1px solid var(--border-subtle, #21262d);
+  vertical-align: middle;
+}
+
+.summary-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Column widths via colgroup */
+.col-partname { width: 90px; }
+.col-filename { width: 200px; }
+.col-material { width: 80px; }
+.col-num      { width: 80px; }
+
+.st-row {
+  cursor: pointer;
+}
+
+.st-row:hover {
+  background: var(--bg-hover, #1c2128);
+}
+
+.st-row-selected {
+  background: rgba(88, 166, 255, 0.10) !important;
+  box-shadow: inset 2px 0 0 var(--accent, #58a6ff);
+}
+
+/* Editable part name */
+.st-input {
+  background: transparent;
+  border: 1px solid transparent;
+  color: inherit;
+  font-size: 12px;
+  font-family: inherit;
+  padding: 2px 5px;
+  border-radius: 3px;
+  width: 64px;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.st-input:focus {
+  border-color: var(--accent, #58a6ff);
+  background: var(--bg-tertiary, #0d1117);
+}
+
+/* Material dropdown */
+.st-select {
+  background: var(--bg-tertiary, #0d1117);
+  border: 1px solid var(--border, #30363d);
+  color: inherit;
+  font-size: 12px;
+  font-family: inherit;
+  padding: 2px 6px;
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.st-select:focus {
+  border-color: var(--accent, #58a6ff);
+}
+
+/* Numeric cells — shared alignment for both th and td */
+.st-num {
+  text-align: right;
+}
+
+/* Monospace rendering only for data rows */
+td.st-num {
+  font-variant-numeric: tabular-nums;
+  font-family: monospace;
+}
+
+.st-total {
+  color: var(--accent-yellow, #facc15);
+  font-weight: 600;
+}
+
+/* File name truncation */
+.st-filename {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary, #8b949e);
+}

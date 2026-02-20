@@ -171,6 +171,34 @@
   text-overflow: ellipsis;
 }
 
+/* Sidebar toggle — always visible on all screen sizes */
+.btn-sidebar-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.btn-sidebar-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-accent);
+}
+
+.btn-sidebar-toggle.active {
+  background: rgba(56, 139, 253, 0.12);
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
 /* Panel toggle buttons — hidden on desktop (≥992px), shown on tablet/mobile */
 .btn-panel-toggle {
   display: none;

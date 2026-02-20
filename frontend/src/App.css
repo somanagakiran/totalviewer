@@ -15,6 +15,21 @@
   min-height: 0;
 }
 
+/* ── Sidebar wrapper — controls desktop collapse ─────────────────────────── */
+.sidebar-wrap {
+  flex-shrink: 0;
+  width: var(--panel-width, 220px);
+  overflow: hidden;
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-wrap--collapsed {
+  width: 0;
+}
+
+/* On mobile (≤991px) the LeftPanel is fixed-positioned, so the wrapper
+   collapses to 0 naturally; no extra rule needed. */
+
 .viewer-container {
   flex: 1;
   display: flex;

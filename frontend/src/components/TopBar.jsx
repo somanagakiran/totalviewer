@@ -1,9 +1,10 @@
-import React, { useRef } from 'react';
+import { useRef } from 'react';
 import './TopBar.css';
 
 export default function TopBar({
   fileName, onFileUpload, onFitScreen, isLoading,
-  leftPanelOpen, rightPanelOpen, onToggleLeft, onToggleRight,
+  leftPanelOpen, onToggleLeft,
+  sidebarOpen, onToggleSidebar,
 }) {
   const fileInputRef = useRef(null);
 
@@ -12,17 +13,17 @@ export default function TopBar({
   };
 
   const handleFileChange = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      onFileUpload(file);
-      e.target.value = ''; // reset input
+    const files = Array.from(e.target.files ?? []);
+    if (files.length > 0) {
+      onFileUpload(files);
+      e.target.value = ''; // reset input so the same file can be re-selected
     }
   };
 
   const handleDrop = (e) => {
     e.preventDefault();
-    const file = e.dataTransfer.files?.[0];
-    if (file) onFileUpload(file);
+    const files = Array.from(e.dataTransfer.files ?? []);
+    if (files.length > 0) onFileUpload(files);
   };
 
   // ── Quote handler (Phase 1 placeholder) ──────────────────────────────────
@@ -50,6 +51,20 @@ export default function TopBar({
       <div className="topbar-actions">
 
         {/* Panel toggles — hidden on desktop (≥992px), visible on tablet/mobile */}
+        {/* Sidebar toggle — always visible on desktop */}
+        <button
+          className={`btn-sidebar-toggle${sidebarOpen ? '' : ' active'}`}
+          onClick={onToggleSidebar}
+          title={sidebarOpen ? 'Hide file info sidebar' : 'Show file info sidebar'}
+          aria-label="Toggle sidebar"
+          aria-pressed={!sidebarOpen}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <line x1="9" y1="3" x2="9" y2="21"/>
+          </svg>
+        </button>
+
         <button
           className={`btn-panel-toggle${leftPanelOpen ? ' active' : ''}`}
           onClick={onToggleLeft}
@@ -61,18 +76,6 @@ export default function TopBar({
             <line x1="3" y1="6"  x2="21" y2="6"/>
             <line x1="3" y1="12" x2="21" y2="12"/>
             <line x1="3" y1="18" x2="21" y2="18"/>
-          </svg>
-        </button>
-
-        <button
-          className={`btn-panel-toggle${rightPanelOpen ? ' active' : ''}`}
-          onClick={onToggleRight}
-          title="Analysis Panel"
-          aria-label="Toggle analysis panel"
-          aria-pressed={rightPanelOpen}
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M18 20V10M12 20V4M6 20v-6"/>
           </svg>
         </button>
 
@@ -141,6 +144,7 @@ export default function TopBar({
         ref={fileInputRef}
         type="file"
         accept=".dxf"
+        multiple
         style={{ display: 'none' }}
         onChange={handleFileChange}
       />

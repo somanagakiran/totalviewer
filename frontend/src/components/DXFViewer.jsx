@@ -93,7 +93,7 @@ function disposeGroup(group) {
 //   error        — error string to display
 //   onStatusChange — status bar callback
 // ═══════════════════════════════════════════════════════════════════════════════
-export default function DXFViewer({ geometry, isLoading, error, onStatusChange }) {
+export default function DXFViewer({ parts, selectedRowId, isLoading, error, onStatusChange }) {
   const mountRef       = useRef(null);
   const threeRef       = useRef(null);
   const geoGroupRef    = useRef(null);
@@ -105,6 +105,16 @@ export default function DXFViewer({ geometry, isLoading, error, onStatusChange }
   });
   // Touch state for pinch-to-zoom + single-finger pan
   const touchRef = useRef({ dist: 0 });
+
+  // Smooth zoom animation state
+  const smoothZoomRef = useRef({
+    targetFs: 200,    // frustum we're animating toward
+    ndcX:     0,      // cursor NDC when scroll fired
+    ndcY:     0,
+    worldX:   0,      // world-space anchor under cursor
+    worldY:   0,
+    rafId:    null,
+  });
 
   const [zoomPct, setZoomPct] = useState(100);
   const [hasGeo,  setHasGeo]  = useState(false);
@@ -169,13 +179,13 @@ export default function DXFViewer({ geometry, isLoading, error, onStatusChange }
     };
   }, []);
 
-  // ── 2. Render geometry when Python API response arrives ────────────────────
+  // ── 2. Render all parts whenever the parts array changes ──────────────────
   useEffect(() => {
     const three = threeRef.current;
     if (!three) return;
     const { scene } = three;
 
-    // Clear previous drawing
+    // Clear previous scene geometry
     if (geoGroupRef.current) {
       scene.remove(geoGroupRef.current);
       disposeGroup(geoGroupRef.current);
@@ -183,18 +193,52 @@ export default function DXFViewer({ geometry, isLoading, error, onStatusChange }
       setHasGeo(false);
     }
 
-    if (!geometry?.length) return;
+    if (!parts?.length) return;
+
+    const visibleParts = selectedRowId
+      ? parts.filter(p => p.id === selectedRowId)
+      : parts;
+
+    if (!visibleParts.length) return;
 
     onStatusChange?.('Rendering geometry…');
 
     const tid = setTimeout(() => {
       try {
-        const group = buildGroupFromGeometry(geometry);
-        scene.add(group);
-        geoGroupRef.current = group;
+        // Parent group holds all per-part sub-groups
+        const parentGroup = new THREE.Group();
+        let currentOffsetX = 0;
+        let totalEntities  = 0;
+
+        for (const part of visibleParts) {
+          if (!part.geometry?.length) continue;
+
+          const subGroup = buildGroupFromGeometry(part.geometry);
+
+          // Compute raw bounding box (before offset) to determine spacing
+          subGroup.updateWorldMatrix(true, true);
+          const box = new THREE.Box3().setFromObject(subGroup);
+
+          if (!box.isEmpty()) {
+            const size    = box.getSize(new THREE.Vector3());
+            // Dynamic gap: 15% of this part's width, minimum 20 units; 0 if only one part
+            const spacing = visibleParts.length > 1 ? Math.max(20, size.x * 0.15) : 0;
+            // Shift sub-group so its left edge aligns to currentOffsetX
+            subGroup.position.x = currentOffsetX - box.min.x;
+            currentOffsetX += size.x + spacing;
+          }
+
+          parentGroup.add(subGroup);
+          totalEntities += part.geometry.length;
+        }
+
+        scene.add(parentGroup);
+        geoGroupRef.current = parentGroup;
         setHasGeo(true);
-        fitToScreen(group);
-        onStatusChange?.(`Rendered ${geometry.length} entities`);
+        fitToScreen(parentGroup);
+        onStatusChange?.(
+          `Rendered ${totalEntities} entities · ${visibleParts.length} part(s)`
+        );
       } catch (err) {
         console.error('[DXF] Render error:', err);
         onStatusChange?.('Render error — ' + err.message);
@@ -202,7 +246,7 @@ export default function DXFViewer({ geometry, isLoading, error, onStatusChange }
     }, 10);
 
     return () => clearTimeout(tid);
-  }, [geometry]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [parts, selectedRowId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 3. Wheel zoom + drag pan ───────────────────────────────────────────────
   useEffect(() => {
@@ -218,30 +262,65 @@ export default function DXFViewer({ geometry, isLoading, error, onStatusChange }
       const rect   = mount.getBoundingClientRect();
       const mx     = ((e.clientX - rect.left) / rect.width)  * 2 - 1;
       const my     = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
-      const factor = e.deltaY < 0 ? 0.85 : 1 / 0.85;
-      const oldFs  = stateRef.current.frustumSize;
-      const newFs  = Math.max(1e-4, Math.min(1e8, oldFs * factor));
-      stateRef.current.frustumSize = newFs;
-
       const W = mount.clientWidth, H = mount.clientHeight, asp = W / H;
+      const currFs = stateRef.current.frustumSize;
 
-      // Keep the world point under the cursor stationary
-      const wx1 = camera.position.x + mx * (oldFs * asp) / 2;
-      const wy1 = camera.position.y + my *  oldFs        / 2;
+      // Zoom limits: 0.2× (zoom out) – 10× (zoom in) relative to fit frustum
+      const base    = baseFrustumRef.current || currFs;
+      const MIN_FS  = base / 10;
+      const MAX_FS  = base * 5;
 
-      camera.left   = (newFs * asp) / -2;
-      camera.right  = (newFs * asp) /  2;
-      camera.top    =  newFs        /  2;
-      camera.bottom =  newFs        / -2;
-      camera.updateProjectionMatrix();
+      // Accumulate toward target so rapid scrolls don't reset the easing
+      const prevTarget = smoothZoomRef.current.rafId
+        ? smoothZoomRef.current.targetFs
+        : currFs;
+      const step      = e.deltaY < 0 ? 0.85 : 1 / 0.85;
+      const newTarget = Math.max(MIN_FS, Math.min(MAX_FS, prevTarget * step));
 
-      const wx2 = camera.position.x + mx * (newFs * asp) / 2;
-      const wy2 = camera.position.y + my *  newFs        / 2;
+      // Anchor: world point under cursor at this moment
+      smoothZoomRef.current.targetFs = newTarget;
+      smoothZoomRef.current.ndcX     = mx;
+      smoothZoomRef.current.ndcY     = my;
+      smoothZoomRef.current.worldX   = camera.position.x + mx * (currFs * asp) / 2;
+      smoothZoomRef.current.worldY   = camera.position.y + my *  currFs        / 2;
 
-      camera.position.x += wx1 - wx2;
-      camera.position.y += wy1 - wy2;
+      if (!smoothZoomRef.current.rafId) {
+        const tick = () => {
+          const t = threeRef.current, m = mountRef.current;
+          if (!t || !m) { smoothZoomRef.current.rafId = null; return; }
+          const { camera: cam } = t;
 
-      setZoomPct(Math.round((baseFrustumRef.current / newFs) * 100));
+          const cur  = stateRef.current.frustumSize;
+          const tgt  = smoothZoomRef.current.targetFs;
+          const diff = tgt - cur;
+          const done = Math.abs(diff) < Math.abs(tgt) * 0.0008;
+          const next = done ? tgt : cur + diff * 0.22;
+
+          stateRef.current.frustumSize = next;
+          const a = m.clientWidth / m.clientHeight;
+          cam.left   = (next * a) / -2;
+          cam.right  = (next * a) /  2;
+          cam.top    =  next      /  2;
+          cam.bottom =  next      / -2;
+          cam.updateProjectionMatrix();
+
+          // Keep anchor world point fixed under cursor
+          const { ndcX, ndcY, worldX, worldY } = smoothZoomRef.current;
+          const cx = cam.position.x + ndcX * (next * a) / 2;
+          const cy = cam.position.y + ndcY *  next      / 2;
+          cam.position.x += worldX - cx;
+          cam.position.y += worldY - cy;
+
+          setZoomPct(Math.round((baseFrustumRef.current / next) * 100));
+
+          if (done) {
+            smoothZoomRef.current.rafId = null;
+          } else {
+            smoothZoomRef.current.rafId = requestAnimationFrame(tick);
+          }
+        };
+        smoothZoomRef.current.rafId = requestAnimationFrame(tick);
+      }
     };
 
     const onMouseDown = (e) => {
@@ -332,8 +411,13 @@ export default function DXFViewer({ geometry, isLoading, error, onStatusChange }
       }
     };
 
+    const onDblClick = () => {
+      if (geoGroupRef.current) fitToScreen(geoGroupRef.current);
+    };
+
     mount.addEventListener('wheel',      onWheel,      { passive: false });
     mount.addEventListener('mousedown',  onMouseDown);
+    mount.addEventListener('dblclick',   onDblClick);
     mount.addEventListener('touchstart', onTouchStart, { passive: false });
     mount.addEventListener('touchmove',  onTouchMove,  { passive: false });
     mount.addEventListener('touchend',   onTouchEnd);
@@ -343,11 +427,16 @@ export default function DXFViewer({ geometry, isLoading, error, onStatusChange }
     return () => {
       mount.removeEventListener('wheel',      onWheel);
       mount.removeEventListener('mousedown',  onMouseDown);
+      mount.removeEventListener('dblclick',   onDblClick);
       mount.removeEventListener('touchstart', onTouchStart);
       mount.removeEventListener('touchmove',  onTouchMove);
       mount.removeEventListener('touchend',   onTouchEnd);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup',   onMouseUp);
+      if (smoothZoomRef.current.rafId) {
+        cancelAnimationFrame(smoothZoomRef.current.rafId);
+        smoothZoomRef.current.rafId = null;
+      }
     };
   }, []);
 
@@ -378,8 +467,9 @@ export default function DXFViewer({ geometry, isLoading, error, onStatusChange }
     if ((size.x * M) / asp > newFs) newFs = (size.x * M) / asp;
     if (!isFinite(newFs) || newFs <= 0) newFs = 200;
 
-    stateRef.current.frustumSize = newFs;
-    baseFrustumRef.current       = newFs;
+    stateRef.current.frustumSize   = newFs;
+    baseFrustumRef.current         = newFs;
+    smoothZoomRef.current.targetFs = newFs;  // keep easing in sync
 
     camera.left   = (newFs * asp) / -2;
     camera.right  = (newFs * asp) /  2;
@@ -396,8 +486,10 @@ export default function DXFViewer({ geometry, isLoading, error, onStatusChange }
     const mount = mountRef.current;
     if (!three || !mount) return;
     const { camera } = three;
-    const newFs = Math.max(1e-4, Math.min(1e8, stateRef.current.frustumSize * factor));
-    stateRef.current.frustumSize = newFs;
+    const base  = baseFrustumRef.current || stateRef.current.frustumSize;
+    const newFs = Math.max(base / 10, Math.min(base * 5, stateRef.current.frustumSize * factor));
+    stateRef.current.frustumSize   = newFs;
+    smoothZoomRef.current.targetFs = newFs;   // keep easing in sync
     const asp = mount.clientWidth / mount.clientHeight;
     camera.left   = (newFs * asp) / -2;
     camera.right  = (newFs * asp) /  2;
@@ -489,7 +581,7 @@ export default function DXFViewer({ geometry, isLoading, error, onStatusChange }
 
       {hasGeo && (
         <div className="viewer-hint">
-          Scroll to zoom &nbsp;·&nbsp; Drag to pan
+          Scroll to zoom &nbsp;·&nbsp; Drag to pan &nbsp;·&nbsp; Double-click to fit
         </div>
       )}
     </div>
