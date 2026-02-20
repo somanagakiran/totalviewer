@@ -229,15 +229,36 @@ export default function App() {
     setSelectedRowId(prev => (prev === partId ? null : prev));
   }, []);
 
-  const handleSelectRow = useCallback((rowId) => {
+  const handleSelectRow = useCallback(async (rowId) => {
     const row = rows.find(r => r.id === rowId);
     if (!row) return;
+
     setSelectedRowId(rowId);
     setAnalysisResult(row.analysisResult);
     setUploadedFile({ name: row.fileName, size: row.fileSize });
-    setViewerStatus(
-      `Loaded · ${row.analysisResult.entityCount ?? '?'} entities · ${row.analysisResult.layers?.length ?? 0} layers`
-    );
+
+    if (row.geometry) {
+      // Fresh-upload row — geometry already in memory, replace viewer immediately
+      setGeometryParts([{ id: row.id, geometry: row.geometry }]);
+      setViewerStatus(
+        `Loaded · ${row.analysisResult.entityCount ?? '?'} entities · ${row.analysisResult.layers?.length ?? 0} layers`
+      );
+      return;
+    }
+
+    // DB-loaded row — fetch geometry from backend
+    const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+    setViewerStatus('Loading geometry…');
+    try {
+      const res = await fetch(`${API_BASE}/parts/${rowId}/geometry`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const geometry = await res.json();
+      setGeometryParts([{ id: row.id, geometry }]);
+      setViewerStatus(`Loaded · ${row.fileName}`);
+    } catch (err) {
+      console.error('[Viewer] Failed to load geometry:', err);
+      setViewerStatus('Geometry not available');
+    }
   }, [rows]);
 
   const handleFitScreen = useCallback(() => {

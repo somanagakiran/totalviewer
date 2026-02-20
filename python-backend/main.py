@@ -9,7 +9,8 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime
+import json
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from engine.dxf_parser import parse_dxf
@@ -44,6 +45,7 @@ class Part(Base):
     external_perimeter = Column(Float, nullable=False)
     internal_perimeter = Column(Float, nullable=False)
     total_perimeter    = Column(Float, nullable=False)
+    geometry_json      = Column(Text, nullable=True)
     created_at         = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
@@ -95,6 +97,7 @@ def store_part(
     external_perimeter: float,
     internal_perimeter: float,
     total_perimeter: float,
+    geometry_json: Optional[str] = None,
 ) -> Optional[Part]:
     """Upsert one Part row (delete existing by file_name, then insert).
     Returns the saved object, or None on failure / DB unavailable."""
@@ -114,6 +117,7 @@ def store_part(
             external_perimeter=external_perimeter,
             internal_perimeter=internal_perimeter,
             total_perimeter=total_perimeter,
+            geometry_json=geometry_json,
         )
         db.add(part)
         db.commit()
@@ -258,6 +262,7 @@ async def upload_dxf(file: UploadFile = File(...)):
             external_perimeter=analysis.get("external_perimeter", 0.0),
             internal_perimeter=analysis.get("internal_perimeter", 0.0),
             total_perimeter=analysis["perimeter"],
+            geometry_json=json.dumps(parsed["geometry"]),
         )
 
         return {
@@ -353,6 +358,20 @@ async def analyze_dxf(body: AnalyzeRequest):
 # ─────────────────────────────────────────────────────────────
 # PARTS ENDPOINTS
 # ─────────────────────────────────────────────────────────────
+
+@app.get("/parts/{part_id}/geometry")
+def get_part_geometry(part_id: int):
+    db = _get_db()
+    try:
+        part = db.query(Part).filter(Part.id == part_id).first()
+        if part is None:
+            raise HTTPException(status_code=404, detail="Part not found")
+        if not part.geometry_json:
+            raise HTTPException(status_code=404, detail="Geometry not stored for this part")
+        return json.loads(part.geometry_json)
+    finally:
+        db.close()
+
 
 @app.get("/parts", response_model=list[PartResponse])
 def get_parts():
