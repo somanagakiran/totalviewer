@@ -42,8 +42,12 @@ def analyze_geometry(
     {
         "holes"               : int,
         "perimeter"           : float,
+        "outer_perimeter"     : float,
+        "external_perimeter"  : float (EP - perimeter of outer boundary),
+        "internal_perimeter"  : float (IP - sum of all hole perimeters),
         "outer_boundary_area" : float,
-        "hole_details"        : [{"type": ..., "area": ..., ...}, ...]
+        "hole_details"        : [{"type": ..., "area": ..., ...}, ...],
+        "parts"               : [{"part_id": 1, "holes": int, "internal_perimeter": float, "external_perimeter": float}]
     }
     """
     print(f"[ANALYZER v4] Starting analysis with {len(raw_entities or [])} entities")
@@ -55,7 +59,7 @@ def analyze_geometry(
     try:
         # Use the optimized hole detector
         result = detect_holes_from_entities(raw_entities, tolerance=0.1, min_area=MIN_AREA)
-        
+
         # Convert to legacy format for frontend compatibility
         analysis_result = {
             "holes": result["total_holes"],
@@ -63,12 +67,25 @@ def analyze_geometry(
             "internal_cutouts_detected": result["internal_cutouts_detected"],
             "perimeter": result.get("outer_perimeter", 0),
             "outer_perimeter": result.get("outer_perimeter", 0),
+            "external_perimeter": result.get("external_perimeter", 0),
+            "internal_perimeter": result.get("internal_perimeter", 0),
             "outer_boundary_area": result["outer_boundary_area"],
             "hole_details": result["hole_details"],
             "hole_geometries": result["hole_geometries"],
         }
-        
+
+        # Build multi-part structure
+        part = {
+            "part_id": 1,
+            "holes": result["total_holes"],
+            "internal_perimeter": result.get("internal_perimeter", 0),
+            "external_perimeter": result.get("external_perimeter", 0),
+        }
+
+        analysis_result["parts"] = [part]
+
         print(f"[ANALYZER v4] Analysis complete: {result['total_holes']} holes detected")
+        print(f"[ANALYZER v4] IP={result.get('internal_perimeter', 0):.3f}, EP={result.get('external_perimeter', 0):.3f}")
         return analysis_result
         
     except Exception as e:
@@ -84,7 +101,15 @@ def _fallback_result() -> dict:
         "internal_cutouts_detected": 0,
         "perimeter": 0.0,
         "outer_perimeter": 0.0,
+        "external_perimeter": 0.0,
+        "internal_perimeter": 0.0,
         "outer_boundary_area": 0.0,
         "hole_details": [],
         "hole_geometries": [],
+        "parts": [{
+            "part_id": 1,
+            "holes": 0,
+            "internal_perimeter": 0.0,
+            "external_perimeter": 0.0,
+        }],
     }

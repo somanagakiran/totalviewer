@@ -111,9 +111,11 @@ async def upload_dxf(file: UploadFile = File(...)):
         # 20-second timeout prevents hanging on complex DXF files.
         _fallback_analysis = {
             "holes": 0, "total_holes": 0, "internal_cutouts_detected": 0,
-            "perimeter": 0.0, "outer_perimeter": 0.0, "outer_boundary_area": 0.0,
+            "perimeter": 0.0, "outer_perimeter": 0.0, "external_perimeter": 0.0,
+            "internal_perimeter": 0.0, "outer_boundary_area": 0.0,
             "hole_details": [],
             "hole_geometries": [],
+            "parts": [{"part_id": 1, "holes": 0, "internal_perimeter": 0.0, "external_perimeter": 0.0}],
         }
         try:
             analysis = await asyncio.wait_for(
@@ -146,9 +148,12 @@ async def upload_dxf(file: UploadFile = File(...)):
             "internal_cutouts_detected":  analysis["internal_cutouts_detected"],
             "perimeter":                  analysis["perimeter"],
             "outer_perimeter":            analysis["outer_perimeter"],
+            "external_perimeter":         analysis.get("external_perimeter", 0.0),
+            "internal_perimeter":         analysis.get("internal_perimeter", 0.0),
             "outer_boundary_area":        analysis["outer_boundary_area"],
             "hole_details":               analysis.get("hole_details", []),
             "hole_geometries":            analysis.get("hole_geometries", []),
+            "parts":                      analysis.get("parts", []),
         }
 
     except Exception as exc:
@@ -209,7 +214,10 @@ async def analyze_dxf(body: AnalyzeRequest):
             "hole_geometries": analysis.get("hole_geometries", []),
             "perimeter": analysis["perimeter"],
             "outer_perimeter": analysis["outer_perimeter"],
+            "external_perimeter": analysis.get("external_perimeter", 0.0),
+            "internal_perimeter": analysis.get("internal_perimeter", 0.0),
             "outer_boundary_area": analysis["outer_boundary_area"],
+            "parts": analysis.get("parts", []),
         }
 
     except Exception as exc:

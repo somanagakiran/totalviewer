@@ -78,7 +78,8 @@ def detect_holes_from_entities(
     -------
     dict with keys:
         total_holes, holes, hole_details, outer_boundary_area,
-        outer_perimeter, internal_cutouts_detected, hole_geometries
+        outer_perimeter, external_perimeter, internal_perimeter,
+        internal_cutouts_detected, hole_geometries
     """
     if not SHAPELY_AVAILABLE:
         return _empty_result()
@@ -231,12 +232,17 @@ def detect_holes_from_entities(
     hole_details    = [_describe_hole(h) for h in holes]
     hole_geometries = [_hole_geom(h, i)  for i, h in enumerate(holes)]
 
+    # Compute internal perimeter: sum of all hole perimeters
+    internal_perimeter = sum(h.exterior.length for h in holes)
+
     return {
         "total_holes":               len(holes),
         "holes":                     len(holes),
         "hole_details":              hole_details,
         "outer_boundary_area":       round(outer.area, 6),
         "outer_perimeter":           round(outer.exterior.length, 6),
+        "external_perimeter":        round(outer.exterior.length, 6),  # EP
+        "internal_perimeter":        round(internal_perimeter, 6),     # IP
         "internal_cutouts_detected": len(holes),
         "hole_geometries":           hole_geometries,
     }
@@ -359,6 +365,8 @@ def _empty_result() -> dict:
         "hole_details":              [],
         "outer_boundary_area":       0.0,
         "outer_perimeter":           0.0,
+        "external_perimeter":        0.0,
+        "internal_perimeter":        0.0,
         "internal_cutouts_detected": 0,
         "hole_geometries":           [],
     }
