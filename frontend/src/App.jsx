@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import TopBar from './components/TopBar';
 import LeftPanel from './components/LeftPanel';
 import RightPanel from './components/RightPanel';
@@ -22,6 +22,9 @@ export default function App() {
 
   const [leftPanelOpen, setLeftPanelOpen] = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
+
+  // Stores whichever backend URL (Render or localhost) responded successfully
+  const apiBaseRef = useRef(null);
 
   const closeAllPanels = useCallback(() => {
     setLeftPanelOpen(false);
@@ -61,24 +64,30 @@ export default function App() {
     setViewerStatus('Uploading to Python engine…');
     setLeftPanelOpen(false);   // close left panel only; keep/open right for results
 
-    const API_BASE =
-      import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+    const PRIMARY  = import.meta.env.VITE_API_BASE_URL     ?? 'http://localhost:8000';
+    const FALLBACK = import.meta.env.VITE_API_FALLBACK_URL ?? 'http://localhost:8000';
 
-    // Quick backend health check (3s timeout) to fail fast if backend is down
-    try {
+    // Try primary (Render), silently fall back to localhost if unreachable
+    const tryPing = async (base) => {
       const hc = new AbortController();
-      const hcTimer = setTimeout(() => hc.abort(), 3000);
-      const ping = await fetch(`${API_BASE}/health`, { signal: hc.signal });
-      clearTimeout(hcTimer);
-      if (!ping.ok) {
-        throw new Error('Backend not reachable. Please start the Python server.');
-      }
-    } catch {
+      const t  = setTimeout(() => hc.abort(), 4000);
+      try {
+        const r = await fetch(`${base}/health`, { signal: hc.signal });
+        return r.ok;
+      } catch { return false; }
+      finally  { clearTimeout(t); }
+    };
+
+    let API_BASE = null;
+    if (await tryPing(PRIMARY))  API_BASE = PRIMARY;
+    else if (await tryPing(FALLBACK)) API_BASE = FALLBACK;
+    else {
       setError('Cannot reach backend. Ensure Python server is running.');
       setViewerStatus('Error loading file');
       setIsLoading(false);
       return;
     }
+    apiBaseRef.current = API_BASE;
 
     const formData = new FormData();
     formData.append('file', file);
@@ -141,7 +150,7 @@ export default function App() {
     }
 
     const API_BASE =
-      import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+      apiBaseRef.current ?? import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
 
     // If we have a session, call /analyze for a fast re-run
     const sid = analysisResult?.session_id;
