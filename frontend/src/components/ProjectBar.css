@@ -1,0 +1,108 @@
+.project-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  height: 36px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.pb-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.pb-select {
+  height: 24px;
+  padding: 0 6px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  min-width: 140px;
+  max-width: 220px;
+}
+
+.pb-select:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
+.pb-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border-primary);
+  flex-shrink: 0;
+  margin: 0 4px;
+}
+
+.pb-input {
+  height: 24px;
+  padding: 0 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  width: 180px;
+}
+
+.pb-input::placeholder {
+  color: var(--text-muted);
+}
+
+.pb-input:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
+.pb-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.pb-btn--create {
+  background: rgba(56, 139, 253, 0.15);
+  border-color: rgba(56, 139, 253, 0.35);
+  color: var(--accent-blue-hover);
+}
+
+.pb-btn--create:hover:not(:disabled) {
+  background: rgba(56, 139, 253, 0.25);
+  border-color: var(--accent-blue);
+}
+
+.pb-btn--create:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pb-btn--delete {
+  background: rgba(248, 81, 73, 0.1);
+  border-color: rgba(248, 81, 73, 0.3);
+  color: var(--accent-red);
+}
+
+.pb-btn--delete:hover {
+  background: rgba(248, 81, 73, 0.2);
+  border-color: var(--accent-red);
+}
