@@ -90,24 +90,24 @@ def debug_hole_detection():
         
         # Check if it's the outer boundary
         if polygon.equals(outer):
-            print(f"     → This is the outer boundary")
+            print(f"     -> This is the outer boundary")
             continue
         
         # Check containment
         try:
             centroid = polygon.centroid
             if outer.contains(centroid):
-                print(f"     → Centroid is INSIDE outer boundary → HOLE")
+                print(f"     -> Centroid is INSIDE outer boundary -> HOLE")
                 detector.holes.append(polygon)
             else:
-                print(f"     → Centroid is OUTSIDE outer boundary")
+                print(f"     -> Centroid is OUTSIDE outer boundary")
                 
                 # Additional check: see if any point is inside
-                print(f"     → Checking individual points...")
+                print(f"     -> Checking individual points...")
                 for j, coord in enumerate(polygon.exterior.coords):
                     point = Point(coord)
                     if outer.contains(point):
-                        print(f"       Point {j}: ({coord[0]:.2f}, {coord[1]:.2f}) is INSIDE → HOLE")
+                        print(f"       Point {j}: ({coord[0]:.2f}, {coord[1]:.2f}) is INSIDE -> HOLE")
                         detector.holes.append(polygon)
                         break
                     else:

@@ -1,34 +1,34 @@
 """
-Optimized Hole Detector — contour-based, entity-type agnostic
+Optimized Hole Detector - contour-based, entity-type agnostic
 =============================================================
 
 Algorithm
 ---------
 1.  Convert every DXF entity's tessellated points to Shapely LineStrings.
     This handles ALL entity types: LINE, ARC, CIRCLE, LWPOLYLINE, POLYLINE,
-    SPLINE, ELLIPSE — any entity the parser has already tessellated to points.
+    SPLINE, ELLIPSE - any entity the parser has already tessellated to points.
 
 2.  Snap all coordinates to a fine grid (SNAP units) so that nearly-coincident
     endpoints (e.g. the tessellated endpoint of an ARC vs. the exact endpoint
     of an adjacent LINE) become exactly coincident and can be joined.
 
-3.  Node all LineStrings together with unary_union() — splits edges at every
+3.  Node all LineStrings together with unary_union() - splits edges at every
     shared endpoint and produces a clean planar graph.
 
 4.  Run shapely.ops.polygonize() to reconstruct every closed ring in the
     planar graph.  polygonize returns one Polygon per closed loop regardless
     of which entity types contributed to it:
-        • a single CIRCLE entity                  -> 1 polygon
-        • a rectangle drawn as 4 LINE entities    -> 1 polygon
-        • a slot drawn as 2 ARCs + 2 LINEs        -> 1 polygon
-        • a hexagon drawn as 6 LINE entities      -> 1 polygon
-        • any closed LWPOLYLINE / SPLINE          -> 1 polygon
-        • any irregular mix of entities           -> 1 polygon
+        * a single CIRCLE entity                  -> 1 polygon
+        * a rectangle drawn as 4 LINE entities    -> 1 polygon
+        * a slot drawn as 2 ARCs + 2 LINEs        -> 1 polygon
+        * a hexagon drawn as 6 LINE entities      -> 1 polygon
+        * any closed LWPOLYLINE / SPLINE          -> 1 polygon
+        * any irregular mix of entities           -> 1 polygon
 
 5.  Deduplicate polygons that share the same centroid and area.
 
 6.  Identify the outer boundary: the largest polygon that is not a
-    drawing-frame rectangle covering ≥ 95 % of the drawing bbox.
+    drawing-frame rectangle covering >= 95 % of the drawing bbox.
 
 7.  Count holes: every closed ring whose centroid lies inside the outer
     boundary (with a small tolerance buffer for boundary-touching cases).
@@ -44,19 +44,19 @@ try:
     SHAPELY_AVAILABLE = True
 except ImportError:
     SHAPELY_AVAILABLE = False
-    print("[HOLE_DETECTOR] Shapely not available — hole detection disabled")
+    print("[HOLE_DETECTOR] Shapely not available - hole detection disabled")
 
 
-# ── Tunables ──────────────────────────────────────────────────────────────────
-SNAP        = 0.1    # coordinate grid snap (must be ≥ DXF FLATTEN_DISTANCE)
-MIN_AREA    = 0.01   # discard polygons smaller than this (drawing units²)
+# -- Tunables ------------------------------------------------------------------
+SNAP        = 0.1    # coordinate grid snap (must be >= DXF FLATTEN_DISTANCE)
+MIN_AREA    = 0.01   # discard polygons smaller than this (drawing units^2)
 DEDUP_DIST  = 0.5    # centroid proximity threshold for duplicate suppression
 MAX_SEGS    = 50000  # polygonize safety limit (prevents hang on huge files)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===============================================================================
 # PUBLIC API
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===============================================================================
 
 def detect_holes_from_entities(
     entities: List[Dict[str, Any]],
@@ -71,7 +71,7 @@ def detect_holes_from_entities(
     entities  : list of geometry dicts produced by dxf_parser.py
                 Each dict must have a "points" key with [[x,y],...] coordinates.
     tolerance : coordinate snap distance for endpoint merging (drawing units).
-                Should be ≥ tessellation chord deviation (default 0.1).
+                Should be >= tessellation chord deviation (default 0.1).
     min_area  : minimum polygon area; smaller polygons are discarded.
 
     Returns
@@ -89,7 +89,7 @@ def detect_holes_from_entities(
 
     snap = max(tolerance, 1e-6)
 
-    # ── 1. Convert entities -> snapped LineStrings ─────────────────────────────
+    # -- 1. Convert entities -> snapped LineStrings -----------------------------
     lines: list = []
     all_xs: list = []
     all_ys: list = []
@@ -125,7 +125,7 @@ def detect_holes_from_entities(
     print(f"[HOLE_DETECTOR] {len(lines)} segments from {len(entities)} entities")
 
     if len(lines) > MAX_SEGS:
-        print(f"[HOLE_DETECTOR] Segment count {len(lines)} > MAX_SEGS={MAX_SEGS} — aborting")
+        print(f"[HOLE_DETECTOR] Segment count {len(lines)} > MAX_SEGS={MAX_SEGS} - aborting")
         return _empty_result()
 
     # Drawing bbox area (used for frame detection)
@@ -135,7 +135,7 @@ def detect_holes_from_entities(
         dy = max(all_ys) - min(all_ys)
         bbox_area = dx * dy
 
-    # ── 2. Node segments and polygonize ───────────────────────────────────────
+    # -- 2. Node segments and polygonize ---------------------------------------
     try:
         merged    = unary_union(lines)
         raw_polys = list(polygonize(merged))
@@ -144,7 +144,7 @@ def detect_holes_from_entities(
         print(f"[HOLE_DETECTOR] polygonize error: {exc}")
         return _empty_result()
 
-    # ── 3. Validate and collect candidate polygons ────────────────────────────
+    # -- 3. Validate and collect candidate polygons ----------------------------
     #
     # polygonize() can return polygons WITH interior holes (the "annular" face
     # between nested rings).  We deliberately extract only the exterior ring of
@@ -171,7 +171,7 @@ def detect_holes_from_entities(
         for sub in polys_to_add:
             if sub.is_empty:
                 continue
-            # Use only the exterior ring — discards interior holes so the
+            # Use only the exterior ring - discards interior holes so the
             # polygon represents the full enclosed area of each ring.
             try:
                 ext = Polygon(sub.exterior.coords)
@@ -191,7 +191,7 @@ def detect_holes_from_entities(
     candidates.sort(key=lambda p: p.area, reverse=True)
     print(f"[HOLE_DETECTOR] {len(candidates)} unique candidate polygons")
 
-    # ── 4. Identify outer boundary ────────────────────────────────────────────
+    # -- 4. Identify outer boundary --------------------------------------------
     outer = _find_outer(candidates, bbox_area)
     if outer is None:
         print("[HOLE_DETECTOR] Could not identify outer boundary")
@@ -200,7 +200,7 @@ def detect_holes_from_entities(
     print(f"[HOLE_DETECTOR] Outer boundary  area={outer.area:.4f}  "
           f"perimeter={outer.exterior.length:.4f}")
 
-    # ── 5. Identify holes ─────────────────────────────────────────────────────
+    # -- 5. Identify holes -----------------------------------------------------
     bx0, by0, bx1, by1 = outer.bounds
     max_dim   = max(bx1 - bx0, by1 - by0, 1.0)
     outer_buf = outer.buffer(max_dim * 0.005)   # tolerance for boundary-hugging holes
@@ -228,7 +228,7 @@ def detect_holes_from_entities(
 
     print(f"[HOLE_DETECTOR] {len(holes)} holes detected")
 
-    # ── 6. Build result ───────────────────────────────────────────────────────
+    # -- 6. Build result -------------------------------------------------------
     hole_details    = [_describe_hole(h) for h in holes]
     hole_geometries = [_hole_geom(h, i)  for i, h in enumerate(holes)]
 
@@ -248,9 +248,9 @@ def detect_holes_from_entities(
     }
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===============================================================================
 # HELPERS
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===============================================================================
 
 def _find_outer(candidates: list, bbox_area: float = 0.0) -> Optional["Polygon"]:
     """

@@ -95,7 +95,7 @@ EOF
         return f.name
 
 def test_session_workflow():
-    """Test the complete upload → analyze workflow"""
+    """Test the complete upload -> analyze workflow"""
     
     print("=== Testing Flask API Session Workflow ===")
     
@@ -103,12 +103,12 @@ def test_session_workflow():
     try:
         response = requests.get("http://127.0.0.1:8000/health")
         if response.status_code == 200:
-            print(f"✅ Health check: {response.json()}")
+            print(f" Health check: {response.json()}")
         else:
-            print(f"❌ Health check failed: {response.status_code}")
+            print(f" Health check failed: {response.status_code}")
             return
     except:
-        print("❌ Could not connect to health endpoint")
+        print(" Could not connect to health endpoint")
         return
     
     # Create a test DXF file
@@ -122,13 +122,13 @@ def test_session_workflow():
             response = requests.post("http://127.0.0.1:8000/upload", files=files)
         
         if response.status_code != 200:
-            print(f"❌ Upload failed: {response.status_code}")
+            print(f" Upload failed: {response.status_code}")
             print(f"Response: {response.text}")
             return
         
         upload_result = response.json()
         session_id = upload_result['session_id']
-        print(f"✅ Upload successful, session_id: {session_id}")
+        print(f" Upload successful, session_id: {session_id}")
         print(f"   Entities found: {upload_result.get('entities', 0)}")
         print(f"   Holes detected on upload: {upload_result.get('total_holes', 0)}")
         
@@ -142,14 +142,14 @@ def test_session_workflow():
         
         if response.status_code == 200:
             result = response.json()
-            print(f"✅ Analysis successful")
+            print(f" Analysis successful")
             print(f"   Total holes: {result.get('total_holes', 0)}")
             print(f"   Outer boundary area: {result.get('outer_boundary_area', 0)}")
             print(f"   Hole details: {len(result.get('hole_details', []))} holes")
             for i, hole in enumerate(result.get('hole_details', [])):
                 print(f"     Hole {i+1}: {hole.get('type', 'unknown')} - area: {hole.get('area', 0):.2f}")
         else:
-            print(f"❌ Analysis failed: {response.status_code}")
+            print(f" Analysis failed: {response.status_code}")
             print(f"Response: {response.text}")
             
         # Step 3: Test debug endpoints
@@ -157,19 +157,19 @@ def test_session_workflow():
         response = requests.get(f"http://127.0.0.1:8000/debug/edges?session_id={session_id}")
         if response.status_code == 200:
             debug_result = response.json()
-            print(f"✅ Debug edges: {debug_result.get('count', 0)} edges found")
+            print(f" Debug edges: {debug_result.get('count', 0)} edges found")
             edges = debug_result.get('edges', [])
             print(f"   Sample edges (first 5):")
             for i, edge in enumerate(edges[:5]):
                 print(f"     Edge {i+1}: {edge}")
         else:
-            print(f"❌ Debug edges failed: {response.status_code}")
+            print(f" Debug edges failed: {response.status_code}")
             
     except requests.exceptions.ConnectionError:
-        print("❌ Could not connect to Flask API. Make sure it's running on port 8000.")
+        print(" Could not connect to Flask API. Make sure it's running on port 8000.")
         print("Run: python -m uvicorn main:app --reload --port 8000")
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f" Error: {e}")
         import traceback
         traceback.print_exc()
     finally:

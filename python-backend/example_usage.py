@@ -20,29 +20,29 @@ def demonstrate_hole_detection():
     print("=" * 60)
     
     print("\nThis system can detect ANY internal closed contour:")
-    print("• Circles")
-    print("• Rectangles") 
-    print("• Triangles")
-    print("• Polygons (any number of sides)")
-    print("• Slots/Oblongs")
-    print("• Irregular closed shapes")
-    print("• Mixed entity contours (LINE + ARC combinations)")
+    print("* Circles")
+    print("* Rectangles") 
+    print("* Triangles")
+    print("* Polygons (any number of sides)")
+    print("* Slots/Oblongs")
+    print("* Irregular closed shapes")
+    print("* Mixed entity contours (LINE + ARC combinations)")
     
     print("\nSupported DXF entities:")
-    print("• LINE")
-    print("• ARC") 
-    print("• CIRCLE")
-    print("• LWPOLYLINE")
-    print("• POLYLINE")
-    print("• SPLINE")
-    print("• ELLIPSE")
+    print("* LINE")
+    print("* ARC") 
+    print("* CIRCLE")
+    print("* LWPOLYLINE")
+    print("* POLYLINE")
+    print("* SPLINE")
+    print("* ELLIPSE")
     
     print("\nKey features:")
-    print("• Handles non-PEDIT joined geometry")
-    print("• Tolerance-based endpoint snapping")
-    print("• Automatic closed loop detection")
-    print("• Shape classification")
-    print("• Robust edge case handling")
+    print("* Handles non-PEDIT joined geometry")
+    print("* Tolerance-based endpoint snapping")
+    print("* Automatic closed loop detection")
+    print("* Shape classification")
+    print("* Robust edge case handling")
     
     # Example: Create a complex part with multiple hole types
     print("\n" + "=" * 60)
@@ -175,7 +175,7 @@ def create_complex_part_example():
 def display_results(result):
     """Display hole detection results in a formatted way"""
     
-    print(f"\n📊 HOLE DETECTION RESULTS")
+    print(f"\n HOLE DETECTION RESULTS")
     print(f"{'='*50}")
     print(f"Total Holes Found: {result['total_holes']}")
     print(f"Outer Boundary Area: {result['outer_boundary_area']:.2f} square units")
@@ -184,15 +184,15 @@ def display_results(result):
     # Count by type
     hole_counts = count_holes_by_type(result['hole_details'])
     
-    print(f"\n📋 HOLE BREAKDOWN BY TYPE:")
+    print(f"\n HOLE BREAKDOWN BY TYPE:")
     print(f"{'='*30}")
     
     for hole_type, count in sorted(hole_counts.items()):
         if count > 0:
-            print(f"• {hole_type.replace('_', ' ').title()}: {count}")
+            print(f"* {hole_type.replace('_', ' ').title()}: {count}")
     
     # Detailed hole information
-    print(f"\n🔍 DETAILED HOLE INFORMATION:")
+    print(f"\n DETAILED HOLE INFORMATION:")
     print(f"{'='*40}")
     
     for i, hole in enumerate(result['hole_details'], 1):
@@ -205,7 +205,7 @@ def display_results(result):
         print(f"  Centroid: ({hole['centroid'][0]:.1f}, {hole['centroid'][1]:.1f})")
     
     # Summary statistics
-    print(f"\n📈 SUMMARY STATISTICS:")
+    print(f"\n SUMMARY STATISTICS:")
     print(f"{'='*25}")
     
     total_area = sum(hole['area'] for hole in result['hole_details'])
@@ -218,25 +218,25 @@ def display_results(result):
     # Shape-specific insights
     hole_counts = count_holes_by_type(result['hole_details'])
     
-    print(f"\n💡 INSIGHTS:")
+    print(f"\n INSIGHTS:")
     print(f"{'='*15}")
     
     if hole_counts.get('circle', 0) > 0:
-        print(f"• Found {hole_counts['circle']} circular holes (likely mounting holes)")
+        print(f"* Found {hole_counts['circle']} circular holes (likely mounting holes)")
     
     if hole_counts.get('rectangle', 0) > 0:
-        print(f"• Found {hole_counts['rectangle']} rectangular cutouts")
+        print(f"* Found {hole_counts['rectangle']} rectangular cutouts")
     
     if hole_counts.get('slot', 0) > 0:
-        print(f"• Found {hole_counts['slot']} slot holes (connector openings)")
+        print(f"* Found {hole_counts['slot']} slot holes (connector openings)")
     
     if hole_counts.get('triangle', 0) > 0:
-        print(f"• Found {hole_counts['triangle']} triangular holes (ventilation)")
+        print(f"* Found {hole_counts['triangle']} triangular holes (ventilation)")
     
     polygon_holes = sum(count for hole_type, count in hole_counts.items() 
                        if hole_type.startswith('polygon_') and count > 0)
     if polygon_holes > 0:
-        print(f"• Found {polygon_holes} polygonal holes (special features)")
+        print(f"* Found {polygon_holes} polygonal holes (special features)")
 
 def test_with_real_dxf():
     """Test with a real DXF file if available"""
@@ -251,7 +251,7 @@ def test_with_real_dxf():
     
     for filename in test_files:
         if os.path.exists(filename):
-            print(f"\n🎯 TESTING WITH REAL DXF FILE: {filename}")
+            print(f"\n TESTING WITH REAL DXF FILE: {filename}")
             print(f"{'='*50}")
             
             try:
@@ -274,7 +274,7 @@ def test_with_real_dxf():
                 print(f"Error processing {filename}: {e}")
                 continue
     
-    print("\nℹ️  No test DXF files found. Using synthetic example instead.")
+    print("\n?  No test DXF files found. Using synthetic example instead.")
     return None
 
 if __name__ == "__main__":
@@ -287,6 +287,6 @@ if __name__ == "__main__":
     # Try to test with real DXF if available
     real_result = test_with_real_dxf()
     
-    print(f"\n✅ Demonstration complete!")
+    print(f"\n Demonstration complete!")
     print(f"The system successfully detected {result['total_holes']} holes in the example part.")
     print(f"Ready for integration with your DXF processing workflow!")

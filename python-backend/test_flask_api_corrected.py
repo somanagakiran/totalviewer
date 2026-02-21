@@ -18,12 +18,12 @@ def test_api():
     try:
         response = requests.get("http://127.0.0.1:8000/health")
         if response.status_code == 200:
-            print(f"✅ Health check: {response.json()}")
+            print(f" Health check: {response.json()}")
         else:
-            print(f"❌ Health check failed: {response.status_code}")
+            print(f" Health check failed: {response.status_code}")
             return
     except:
-        print("❌ Could not connect to health endpoint")
+        print(" Could not connect to health endpoint")
         return
     
     # Now test the analyze endpoint with proper session data
@@ -53,19 +53,19 @@ def test_api():
         
         if response.status_code == 200:
             result = response.json()
-            print(f"✅ API Response successful")
+            print(f" API Response successful")
             print(f"Total holes: {result.get('total_holes', 0)}")
             print(f"Outer boundary area: {result.get('outer_boundary_area', 0)}")
             print(f"Hole details: {result.get('hole_details', [])}")
         else:
-            print(f"❌ API Error: {response.status_code}")
+            print(f" API Error: {response.status_code}")
             print(f"Response: {response.text}")
             
     except requests.exceptions.ConnectionError:
-        print("❌ Could not connect to Flask API. Make sure it's running on port 8000.")
+        print(" Could not connect to Flask API. Make sure it's running on port 8000.")
         print("Run: python -m uvicorn main:app --reload --port 8000")
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f" Error: {e}")
 
 if __name__ == "__main__":
     print("Testing Flask API...")

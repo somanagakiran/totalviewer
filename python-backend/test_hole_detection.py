@@ -129,7 +129,7 @@ def test_edge_cases():
     print("Test 1: Empty entities")
     result = detect_holes_from_entities([])
     assert result['total_holes'] == 0
-    print("✓ Empty entities handled correctly")
+    print("OK Empty entities handled correctly")
     
     # Test 2: Only outer boundary, no holes
     print("\nTest 2: Only outer boundary")
@@ -141,7 +141,7 @@ def test_edge_cases():
     ]
     result = detect_holes_from_entities(entities)
     assert result['total_holes'] == 0
-    print("✓ No holes detected correctly")
+    print("OK No holes detected correctly")
     
     # Test 3: Very small holes (should be filtered out)
     print("\nTest 3: Very small holes")
@@ -156,7 +156,7 @@ def test_edge_cases():
     ]
     result = detect_holes_from_entities(entities, min_area=0.1)
     assert result['total_holes'] == 0  # Should be filtered out
-    print("✓ Small holes filtered correctly")
+    print("OK Small holes filtered correctly")
     
     # Test 4: Non-closed entities (should not form holes)
     print("\nTest 4: Non-closed entities")
@@ -171,7 +171,7 @@ def test_edge_cases():
     ]
     result = detect_holes_from_entities(entities)
     # Should not detect the arc as a hole since it's not closed
-    print(f"✓ Non-closed entities handled (holes: {result['total_holes']})")
+    print(f"OK Non-closed entities handled (holes: {result['total_holes']})")
 
 def test_tolerance_handling():
     """Test tolerance handling for gaps between entities"""
@@ -215,7 +215,7 @@ def test_shape_classification():
         hole_type = hole_details[0]['type']
         print(f"Circle classification: {hole_type}")
         assert hole_type == "circle"
-        print("✓ Circle classification correct")
+        print("OK Circle classification correct")
     
     # Test rectangle classification
     entities = [
@@ -238,7 +238,7 @@ def test_shape_classification():
         hole_type = hole_details[0]['type']
         print(f"Rectangle classification: {hole_type}")
         assert hole_type == "rectangle"
-        print("✓ Rectangle classification correct")
+        print("OK Rectangle classification correct")
 
 def main():
     """Run all tests"""
@@ -253,11 +253,11 @@ def main():
         test_shape_classification()
         
         print("\n" + "=" * 50)
-        print("✅ All tests passed successfully!")
+        print(" All tests passed successfully!")
         print("The hole detection system is working correctly.")
         
     except Exception as e:
-        print(f"\n❌ Test failed: {e}")
+        print(f"\n Test failed: {e}")
         import traceback
         traceback.print_exc()
         return 1

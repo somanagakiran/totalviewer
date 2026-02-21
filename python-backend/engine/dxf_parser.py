@@ -19,7 +19,7 @@ import ezdxf
 from ezdxf.math import Matrix44, Vec3, BSpline
 from ezdxf import path as ezpath
 
-# ─── Constants ────────────────────────────────────────────────────────────────
+# --- Constants ----------------------------------------------------------------
 FLATTEN_DISTANCE = 0.1          # max chord deviation for curve tessellation (mm)
 ARC_SEGMENTS_PER_DEG = 0.5      # segments per degree for arcs
 MIN_CIRCLE_SEGMENTS = 64
@@ -31,7 +31,7 @@ SUPPORTED_TYPES = frozenset({
     "LWPOLYLINE", "POLYLINE", "SPLINE", "INSERT",
 })
 
-# ─── Unit name map ────────────────────────────────────────────────────────────
+# --- Unit name map ------------------------------------------------------------
 UNIT_MAP = {
     0: "Unitless", 1: "Inches", 2: "Feet", 3: "Miles",
     4: "Millimeters", 5: "Centimeters", 6: "Meters", 7: "Kilometers",
@@ -39,9 +39,9 @@ UNIT_MAP = {
 }
 
 
-# ═════════════════════════════════════════════════════════════════════════════
+# =============================================================================
 # PUBLIC API
-# ═════════════════════════════════════════════════════════════════════════════
+# =============================================================================
 
 def parse_dxf(filepath: str) -> dict:
     """
@@ -81,9 +81,9 @@ def parse_dxf(filepath: str) -> dict:
     }
 
 
-# ═════════════════════════════════════════════════════════════════════════════
+# =============================================================================
 # ENTITY WALKER
-# ═════════════════════════════════════════════════════════════════════════════
+# =============================================================================
 
 def _walk_entities(
     entity_collection,
@@ -131,9 +131,9 @@ def _handle_insert(entity, doc, parent_transform: Matrix44, geometry, closed_con
     _walk_entities(block, doc, combined, geometry, closed_contours, depth + 1)
 
 
-# ═════════════════════════════════════════════════════════════════════════════
+# =============================================================================
 # ENTITY EXTRACTION
-# ═════════════════════════════════════════════════════════════════════════════
+# =============================================================================
 
 def _extract_entity(entity, transform: Matrix44) -> dict | None:
     """Convert a DXF entity to a serialisable geometry item."""
@@ -156,7 +156,7 @@ def _extract_entity(entity, transform: Matrix44) -> dict | None:
     return None
 
 
-# ─── LINE ────────────────────────────────────────────────────────────────────
+# --- LINE --------------------------------------------------------------------
 def _extract_line(entity, transform: Matrix44) -> dict | None:
     s = _xform(entity.dxf.start, transform)
     e = _xform(entity.dxf.end, transform)
@@ -173,7 +173,7 @@ def _extract_line(entity, transform: Matrix44) -> dict | None:
     }
 
 
-# ─── CIRCLE ──────────────────────────────────────────────────────────────────
+# --- CIRCLE ------------------------------------------------------------------
 def _extract_circle(entity, transform: Matrix44) -> dict | None:
     cx, cy = _xform(entity.dxf.center, transform)
     r = entity.dxf.radius
@@ -194,7 +194,7 @@ def _extract_circle(entity, transform: Matrix44) -> dict | None:
     }
 
 
-# ─── ARC ─────────────────────────────────────────────────────────────────────
+# --- ARC ---------------------------------------------------------------------
 def _extract_arc(entity, transform: Matrix44) -> dict | None:
     cx, cy = _xform(entity.dxf.center, transform)
     r = entity.dxf.radius
@@ -224,7 +224,7 @@ def _extract_arc(entity, transform: Matrix44) -> dict | None:
     }
 
 
-# ─── ELLIPSE ─────────────────────────────────────────────────────────────────
+# --- ELLIPSE -----------------------------------------------------------------
 def _extract_ellipse(entity, transform: Matrix44) -> dict | None:
     try:
         # Use ezdxf construction tool for accurate tessellation
@@ -234,7 +234,7 @@ def _extract_ellipse(entity, transform: Matrix44) -> dict | None:
     except Exception:
         return None
 
-    sa = entity.dxf.start_param  # radians 0..2π
+    sa = entity.dxf.start_param  # radians 0..2pi
     ea = entity.dxf.end_param
     is_full = abs((ea - sa) % (2 * math.pi)) < 1e-4 or abs(ea - sa) < 1e-4
 
@@ -250,7 +250,7 @@ def _extract_ellipse(entity, transform: Matrix44) -> dict | None:
     }
 
 
-# ─── LWPOLYLINE ──────────────────────────────────────────────────────────────
+# --- LWPOLYLINE --------------------------------------------------------------
 def _extract_lwpolyline(entity, transform: Matrix44) -> dict | None:
     """
     Extract LWPOLYLINE with full bulge-arc support.
@@ -294,7 +294,7 @@ def _extract_lwpolyline(entity, transform: Matrix44) -> dict | None:
     }
 
 
-# ─── POLYLINE (2D / 3D) ──────────────────────────────────────────────────────
+# --- POLYLINE (2D / 3D) ------------------------------------------------------
 def _extract_polyline(entity, transform: Matrix44) -> dict | None:
     verts = list(entity.vertices)
     if len(verts) < 2:
@@ -328,7 +328,7 @@ def _extract_polyline(entity, transform: Matrix44) -> dict | None:
     }
 
 
-# ─── SPLINE ──────────────────────────────────────────────────────────────────
+# --- SPLINE ------------------------------------------------------------------
 def _extract_spline(entity, transform: Matrix44) -> dict | None:
     """
     Tessellate SPLINE using ezdxf's built-in B-spline evaluator.
@@ -365,9 +365,9 @@ def _extract_spline(entity, transform: Matrix44) -> dict | None:
     }
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# BULGE → ARC CONVERSION
-# ═════════════════════════════════════════════════════════════════════════════
+# =============================================================================
+# BULGE -> ARC CONVERSION
+# =============================================================================
 
 def _bulge_to_arc_points(
     p1: tuple, p2: tuple, bulge: float, segments: int = 48
@@ -376,7 +376,7 @@ def _bulge_to_arc_points(
     Convert a DXF polyline bulge segment to a list of arc sample points.
 
     DXF bulge definition:
-      bulge = tan(θ / 4)  where θ = included arc angle
+      bulge = tan(theta / 4)  where theta = included arc angle
       positive bulge = counterclockwise arc
       negative bulge = clockwise arc
     """
@@ -394,7 +394,7 @@ def _bulge_to_arc_points(
     # Distance from chord midpoint to arc center
     d_to_center = r * math.cos(theta / 2.0)
 
-    # Perpendicular unit vector (rotated 90° CCW from chord)
+    # Perpendicular unit vector (rotated 90deg CCW from chord)
     perp_x, perp_y = -dy / d, dx / d
     mid_x, mid_y = (x1 + x2) / 2.0, (y1 + y2) / 2.0
 
@@ -421,9 +421,9 @@ def _bulge_to_arc_points(
     return pts
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# LINE-SEGMENT CHAINING → closed loops
-# ═════════════════════════════════════════════════════════════════════════════
+# =============================================================================
+# LINE-SEGMENT CHAINING -> closed loops
+# =============================================================================
 
 def _chain_segments_to_loops(geometry: list[dict]) -> list[list[tuple]]:
     """
@@ -438,8 +438,8 @@ def _chain_segments_to_loops(geometry: list[dict]) -> list[list[tuple]]:
     1.  Collect every open segment as (start_key, end_key, interpolated_pts).
     2.  Build an adjacency graph keyed on snapped endpoints.
     3.  For each unvisited node, greedily follow the single outgoing unused
-        edge until we either return to the start (→ closed loop) or get stuck.
-    4.  Accept a loop only if it has ≥ 3 segments and ≥ 3 unique points.
+        edge until we either return to the start (-> closed loop) or get stuck.
+    4.  Accept a loop only if it has >= 3 segments and >= 3 unique points.
 
     The greedy walk works well for typical sheet-metal DXF profiles where
     each endpoint connects to exactly one other segment (degree-2 graph).
@@ -452,7 +452,7 @@ def _chain_segments_to_loops(geometry: list[dict]) -> list[list[tuple]]:
     def snap_key(px: float, py: float) -> tuple:
         return (round(px / SNAP) * SNAP, round(py / SNAP) * SNAP)
 
-    # ── Collect open segments ─────────────────────────────────────────────────
+    # -- Collect open segments -------------------------------------------------
     segs: list[dict] = []          # {k0, k1, pts_fwd}
     for item in geometry:
         if item.get("closed"):
@@ -465,21 +465,21 @@ def _chain_segments_to_loops(geometry: list[dict]) -> list[list[tuple]]:
         k0 = snap_key(p0[0], p0[1])
         k1 = snap_key(p1[0], p1[1])
         if k0 == k1:
-            continue  # self-closing → treat as already closed
+            continue  # self-closing -> treat as already closed
         pts = [(float(pt[0]), float(pt[1])) for pt in raw]
         segs.append({"k0": k0, "k1": k1, "pts": pts})
 
     if not segs:
         return []
 
-    # ── Build adjacency ───────────────────────────────────────────────────────
+    # -- Build adjacency -------------------------------------------------------
     # adj[node] = list of (neighbour_node, seg_idx, forward:bool)
     adj: dict[tuple, list] = defaultdict(list)
     for idx, seg in enumerate(segs):
         adj[seg["k0"]].append((seg["k1"], idx, True))
         adj[seg["k1"]].append((seg["k0"], idx, False))
 
-    # ── Greedy chain-following ────────────────────────────────────────────────
+    # -- Greedy chain-following ------------------------------------------------
     loops:     list[list[tuple]] = []
     used_segs: set[int]          = set()
 
@@ -501,7 +501,7 @@ def _chain_segments_to_loops(geometry: list[dict]) -> list[list[tuple]]:
                     step = (nxt, sidx, fwd)
                     break
             if step is None:
-                break  # dead end — no more unused edges
+                break  # dead end - no more unused edges
 
             nxt, sidx, fwd = step
             used_segs.add(sidx)
@@ -527,20 +527,20 @@ def _chain_segments_to_loops(geometry: list[dict]) -> list[list[tuple]]:
             current = nxt
 
         if not found_loop:
-            # Walk did not close — release edges so other starts can try
+            # Walk did not close - release edges so other starts can try
             for sidx in local_used:
                 used_segs.discard(sidx)
 
     return loops
 
 
-# ═════════════════════════════════════════════════════════════════════════════
+# =============================================================================
 # HELPERS
-# ═════════════════════════════════════════════════════════════════════════════
+# =============================================================================
 
 def _xform(point: Vec3, transform: Matrix44) -> tuple[float, float]:
-    """Apply a 4×4 transform to a 3D point and return (x, y)."""
-    if transform == Matrix44():  # identity — skip computation
+    """Apply a 4x4 transform to a 3D point and return (x, y)."""
+    if transform == Matrix44():  # identity - skip computation
         return (point.x, point.y)
     transformed = transform.transform(point)
     return (transformed.x, transformed.y)

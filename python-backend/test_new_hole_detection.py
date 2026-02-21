@@ -82,4 +82,4 @@ def comprehensive_test():
 if __name__ == "__main__":
     simple_test()
     comprehensive_test()
-    print("\n✅ Tests completed!")
+    print("\n Tests completed!")

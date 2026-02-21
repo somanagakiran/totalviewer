@@ -217,3 +217,264 @@ td.st-num {
   white-space: nowrap;
   color: var(--text-secondary, #8b949e);
 }
+
+/* Qty column */
+.col-qty { width: 60px; }
+
+.st-qty-input {
+  background: transparent;
+  border: 1px solid transparent;
+  color: inherit;
+  font-size: 12px;
+  font-family: monospace;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 4px;
+  border-radius: 3px;
+  width: 44px;
+  text-align: right;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+  -moz-appearance: textfield;
+}
+
+.st-qty-input::-webkit-inner-spin-button,
+.st-qty-input::-webkit-outer-spin-button {
+  opacity: 0;
+}
+
+.st-qty-input:focus {
+  border-color: var(--accent, #58a6ff);
+  background: var(--bg-tertiary, #0d1117);
+}
+
+/* -- Nesting bar ---------------------------------------------------------- */
+.st-nesting-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  background: var(--bg-tertiary, #0d1117);
+  border-top: 1px solid var(--border, #30363d);
+  flex-wrap: wrap;
+}
+
+.st-nesting-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-secondary, #8b949e);
+  flex-shrink: 0;
+}
+
+.st-nesting-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.st-nesting-field-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted, #6e7681);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  user-select: none;
+}
+
+.st-nesting-input {
+  width: 72px;
+  height: 22px;
+  padding: 0 6px;
+  background: var(--bg-secondary, #161b22);
+  border: 1px solid var(--border, #30363d);
+  border-radius: 3px;
+  color: var(--text-primary, #e6edf3);
+  font-size: 12px;
+  font-family: monospace;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  outline: none;
+  transition: border-color 0.15s;
+  -moz-appearance: textfield;
+}
+
+.st-nesting-input::-webkit-inner-spin-button,
+.st-nesting-input::-webkit-outer-spin-button {
+  opacity: 0;
+}
+
+.st-nesting-input:focus {
+  border-color: var(--accent, #58a6ff);
+}
+
+.st-nesting-run {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 10px;
+  background: rgba(56, 139, 253, 0.15);
+  border: 1px solid rgba(56, 139, 253, 0.35);
+  border-radius: 4px;
+  color: var(--accent-blue-hover, #79c0ff);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.st-nesting-run:hover:not(:disabled) {
+  background: rgba(56, 139, 253, 0.25);
+  border-color: var(--accent, #58a6ff);
+}
+
+.st-nesting-run:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.st-nesting-run--busy {
+  color: var(--text-secondary, #8b949e);
+  border-color: var(--border, #30363d);
+  background: transparent;
+}
+
+@keyframes st-spin {
+  to { transform: rotate(360deg); }
+}
+
+.st-spin {
+  animation: st-spin 0.8s linear infinite;
+}
+
+/* -- Nesting results ------------------------------------------------------- */
+.st-nesting-results {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-left: 6px;
+}
+
+.st-nest-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+
+.st-nest-stat-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted, #6e7681);
+}
+
+.st-nest-stat-value {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary, #e6edf3);
+}
+
+.st-nest-util {
+  color: #3fb950;
+}
+
+.st-nest-waste {
+  color: var(--accent-yellow, #facc15);
+}
+
+/* -- Part selection dot --------------------------------------------------- */
+.st-part-cell {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* 9px circular toggle dot before the part-name input */
+.st-part-sel {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1.5px solid var(--text-muted, #6e7681);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.st-part-sel:hover {
+  border-color: #3fb950;
+  box-shadow: 0 0 0 2px rgba(63, 185, 80, 0.20);
+}
+
+.st-part-sel--on {
+  background: #3fb950;
+  border-color: #3fb950;
+  box-shadow: 0 0 0 2px rgba(63, 185, 80, 0.25);
+}
+
+/* Row highlight when selected for nesting */
+.st-row-nest-sel {
+  background: rgba(63, 185, 80, 0.07) !important;
+}
+
+.st-row-nest-sel.st-row-selected {
+  background: rgba(63, 185, 80, 0.12) !important;
+  box-shadow: inset 2px 0 0 #3fb950;
+}
+
+/* -- Nesting action buttons group ----------------------------------------- */
+.st-nesting-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+/* Green variant for "Nest Selected" button */
+.st-nesting-run--selected {
+  background: rgba(63, 185, 80, 0.12);
+  border-color: rgba(63, 185, 80, 0.35);
+  color: #3fb950;
+}
+
+.st-nesting-run--selected:hover:not(:disabled) {
+  background: rgba(63, 185, 80, 0.22);
+  border-color: #3fb950;
+}
+
+/* Selected count badge inside the button */
+.st-sel-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  background: rgba(63, 185, 80, 0.25);
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  color: #3fb950;
+}
+
+/* Warning text when Nest Selected clicked with no selection */
+.st-nest-warning {
+  font-size: 11px;
+  color: #e3a739;
+  font-weight: 500;
+  flex-shrink: 0;
+  animation: st-fadein 0.15s ease;
+}
+
+@keyframes st-fadein {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

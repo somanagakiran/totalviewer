@@ -6,6 +6,47 @@ import StatusBar from './components/StatusBar';
 import SummaryTable from './components/SummaryTable';
 import './App.css';
 
+// -------------------------------------------------------------
+// POLYGON EXTRACTION
+// Extract the outer boundary and holes from DXF geometry data.
+// Geometry items: { points: [[x,y],...], closed: bool, ... }
+// Largest closed polygon = outer; smaller ones = holes.
+// -------------------------------------------------------------
+function polyArea(pts) {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const j = (i + 1) % pts.length;
+    a += pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1];
+  }
+  return Math.abs(a) / 2;
+}
+
+function extractPolygons(geometry) {
+  if (!Array.isArray(geometry)) return { outer: [], holes: [] };
+
+  const closed = geometry
+    .filter(e => e.closed && Array.isArray(e.points) && e.points.length >= 3)
+    .sort((a, b) => polyArea(b.points) - polyArea(a.points));
+
+  if (closed.length === 0) return { outer: [], holes: [] };
+
+  return {
+    outer: closed[0].points,
+    holes: closed.slice(1).map(e => e.points),
+  };
+}
+
+// Supported file extensions
+const IMAGE_EXTS    = new Set(['jpg', 'jpeg', 'png']);
+const BACKEND_EXTS  = new Set(['dxf', 'pdf']);
+const SUPPORTED_EXTS = new Set([...IMAGE_EXTS, ...BACKEND_EXTS]);
+
+function fileExt(file) {
+  return file?.name?.split('.').pop().toLowerCase() ?? '';
+}
+
+// -------------------------------------------------------------
+
 export default function App() {
 
   const [uploadedFile, setUploadedFile]     = useState(null);
@@ -22,34 +63,80 @@ export default function App() {
   const rowCounterRef                       = useRef(0);
   const apiBaseRef                          = useRef(null);
 
+  // Nesting state
+  const [stock, setStock]                 = useState({ width: 3000, height: 1500, thickness: 3 });
+  const [nestingResult, setNestingResult] = useState(null);
+  const [isNesting, setIsNesting]         = useState(false);
+  const [selectedParts, setSelectedParts] = useState([]);
+  const [viewMode, setViewMode]           = useState('original');
+
+  // Multi-format viewer state
+  const [activeFileType, setActiveFileType] = useState('dxf');
+
   const closeAllPanels   = useCallback(() => setLeftPanelOpen(false), []);
   const handleToggleLeft = useCallback(() => setLeftPanelOpen(v => !v), []);
 
-  // ─────────────────────────────────────────────
+  // -------------------------------------------------------
   // FILE UPLOAD
-  // ─────────────────────────────────────────────
+  // -------------------------------------------------------
   const handleFileUpload = useCallback(async (filesInput) => {
 
     const allFiles = Array.isArray(filesInput) ? filesInput : [filesInput];
-    const dxfFiles = allFiles.filter(f => f?.name?.split('.').pop().toLowerCase() === 'dxf');
+    const validFiles = allFiles.filter(f => SUPPORTED_EXTS.has(fileExt(f)));
 
-    if (dxfFiles.length === 0) {
-      setError('Invalid file format. Only .DXF files are accepted.');
+    if (validFiles.length === 0) {
+      setError('Invalid file format. Accepted: .DXF, .PDF, .JPG, .PNG');
       return;
     }
 
-    let toProcess = dxfFiles;
-    if (dxfFiles.length > 5) {
+    let toProcess = validFiles;
+    if (validFiles.length > 5) {
       alert('Maximum 5 files per upload. Only the first 5 will be processed.');
-      toProcess = dxfFiles.slice(0, 5);
+      toProcess = validFiles.slice(0, 5);
     }
 
     setError(null);
+    setUploadedFile(toProcess[0]);
+    setLeftPanelOpen(false);
+    setViewMode('original');
+
+    // ── Image files: handled entirely on the frontend ──────────────────────
+    const imageFiles   = toProcess.filter(f => IMAGE_EXTS.has(fileExt(f)));
+    const backendFiles = toProcess.filter(f => BACKEND_EXTS.has(fileExt(f)));
+
+    for (const file of imageFiles) {
+      const imageUrl = URL.createObjectURL(file);
+      rowCounterRef.current += 1;
+      const rowId = rowCounterRef.current;
+
+      setRows(prev => [...prev, {
+        id:             rowId,
+        partName:       `p${rowId}`,
+        fileName:       file.name,
+        fileSize:       file.size,
+        fileType:       'image',
+        imageUrl,
+        pdfData:        null,
+        material:       'N/A',
+        qty:            1,
+        holes:          0,
+        ep:             0,
+        ip:             0,
+        geometry:       null,
+        analysisResult: null,
+      }]);
+      setSelectedRowId(rowId);
+      setActiveFileType('image');
+      setGeometryParts([]);
+      setViewerStatus(`Loaded - ${file.name}`);
+    }
+
+    if (backendFiles.length === 0) return;
+
+    // ── Backend files: DXF and PDF need the Python engine ─────────────────
     setIsLoading(true);
     setAnalysisResult(null);
-    setUploadedFile(toProcess[0]);
-    setViewerStatus('Connecting to Python engine…');
-    setLeftPanelOpen(false);
+    setViewerStatus('Connecting to Python engine...');
 
     const PRIMARY  = import.meta.env.VITE_API_BASE_URL     ?? 'http://localhost:8000';
     const FALLBACK = import.meta.env.VITE_API_FALLBACK_URL ?? 'http://localhost:8000';
@@ -75,25 +162,26 @@ export default function App() {
     }
     apiBaseRef.current = API_BASE;
 
-    let lastResult = null;
-    let lastFile   = null;
-    let processed  = 0;
+    let lastDxfResult = null;
+    let lastFile      = null;
+    let processed     = 0;
 
-    for (const file of toProcess) {
+    for (const file of backendFiles) {
+      const ext = fileExt(file);
       try {
         setViewerStatus(
-          toProcess.length > 1
-            ? `Uploading ${file.name} (${processed + 1}/${toProcess.length})…`
-            : 'Uploading to Python engine…'
+          backendFiles.length > 1
+            ? `Uploading ${file.name} (${processed + 1}/${backendFiles.length})...`
+            : 'Uploading to Python engine...'
         );
         setUploadedFile(file);
 
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 20000);
+        const timer = setTimeout(() => controller.abort(), 30000);
         const formData = new FormData();
         formData.append('file', file);
 
-        const response = await fetch(`${API_BASE}/upload`, {
+        const response = await fetch(`${API_BASE}/upload-drawing`, {
           method: 'POST',
           body:   formData,
           signal: controller.signal,
@@ -103,38 +191,78 @@ export default function App() {
         const data = await response.json();
         if (!response.ok) throw new Error(data.detail || 'Upload failed');
 
-        const result = {
-          ...data,
-          entityCount: data.entities,
-          boundingBox: data.bounding_box,
-        };
-
-        const part = data.parts?.[0];
-        const ep   = part?.external_perimeter ?? data.external_perimeter ?? data.perimeter ?? 0;
-        const ip   = part?.internal_perimeter ?? data.internal_perimeter ?? 0;
-
         rowCounterRef.current += 1;
         const rowId = rowCounterRef.current;
 
-        const newRow = {
-          id:             rowId,
-          partName:       `p${rowId}`,
-          fileName:       file.name,
-          fileSize:       file.size,
-          material:       'MS',
-          holes:          data.holes ?? 0,
-          ep:             ep ?? 0,
-          ip:             ip ?? 0,
-          geometry:       data.geometry,
-          analysisResult: result,
-        };
+        if (ext === 'dxf') {
+          const result = {
+            ...data,
+            entityCount: data.entities,
+            boundingBox: data.bounding_box,
+          };
+          const part = data.parts?.[0];
+          const ep   = part?.external_perimeter ?? data.external_perimeter ?? data.perimeter ?? 0;
+          const ip   = part?.internal_perimeter ?? data.internal_perimeter ?? 0;
 
-        setRows(prev => [...prev, newRow]);
-        setSelectedRowId(rowId);
-        setGeometryParts(prev => [...prev, { id: rowId, geometry: data.geometry }]);
+          setRows(prev => [...prev, {
+            id:             rowId,
+            partName:       `p${rowId}`,
+            fileName:       file.name,
+            fileSize:       file.size,
+            fileType:       'dxf',
+            imageUrl:       null,
+            pdfData:        null,
+            material:       'MS',
+            qty:            1,
+            holes:          data.holes ?? 0,
+            ep:             ep ?? 0,
+            ip:             ip ?? 0,
+            geometry:       data.geometry,
+            analysisResult: result,
+          }]);
+          setSelectedRowId(rowId);
+          setGeometryParts(prev => [...prev, { id: rowId, geometry: data.geometry }]);
+          setActiveFileType('dxf');
+          lastDxfResult = result;
+          lastFile      = file;
 
-        lastResult = result;
-        lastFile   = file;
+        } else if (ext === 'pdf') {
+          const pdfData = {
+            page_image_b64:       data.page_image_b64,
+            vector_lines:         data.vector_lines ?? [],
+            extracted_dimensions: data.extracted_dimensions ?? [],
+            width:                data.width,
+            height:               data.height,
+          };
+
+          setRows(prev => [...prev, {
+            id:             rowId,
+            partName:       `p${rowId}`,
+            fileName:       file.name,
+            fileSize:       file.size,
+            fileType:       'pdf',
+            imageUrl:       null,
+            pdfData,
+            material:       'N/A',
+            qty:            1,
+            holes:          0,
+            ep:             0,
+            ip:             0,
+            geometry:       null,
+            analysisResult: null,
+          }]);
+          setSelectedRowId(rowId);
+          setGeometryParts([]);
+          setActiveFileType('pdf');
+          setViewerStatus(
+            `Loaded - ${file.name}` +
+            (pdfData.extracted_dimensions.length > 0
+              ? ` (${pdfData.extracted_dimensions.length} dimensions found)`
+              : '')
+          );
+          lastFile = file;
+        }
+
         processed++;
 
       } catch (err) {
@@ -146,13 +274,13 @@ export default function App() {
       }
     }
 
-    if (lastResult) {
-      setAnalysisResult(lastResult);
+    if (lastDxfResult) {
+      setAnalysisResult(lastDxfResult);
       setUploadedFile(lastFile);
       setViewerStatus(
         processed > 1
           ? `Loaded ${processed} files`
-          : `Loaded · ${lastResult.entityCount} entities · ${lastResult.layers?.length ?? 0} layers`
+          : `Loaded - ${lastDxfResult.entityCount} entities - ${lastDxfResult.layers?.length ?? 0} layers`
       );
     }
 
@@ -160,9 +288,9 @@ export default function App() {
 
   }, []);
 
-  // ─────────────────────────────────────────────
-  // ROW SELECTION  (geometry always in local state)
-  // ─────────────────────────────────────────────
+  // -------------------------------------------------------
+  // ROW SELECTION
+  // -------------------------------------------------------
   const handleSelectRow = useCallback((rowId) => {
     const row = rows.find(r => r.id === rowId);
     if (!row) return;
@@ -170,12 +298,22 @@ export default function App() {
     setSelectedRowId(rowId);
     setAnalysisResult(row.analysisResult);
     setUploadedFile({ name: row.fileName, size: row.fileSize });
+    setActiveFileType(row.fileType ?? 'dxf');
 
-    if (row.geometry) {
+    if (row.fileType === 'dxf' && row.geometry) {
       setGeometryParts([{ id: row.id, geometry: row.geometry }]);
       setViewerStatus(
-        `Loaded · ${row.analysisResult?.entityCount ?? '?'} entities · ${row.analysisResult?.layers?.length ?? 0} layers`
+        `Loaded - ${row.analysisResult?.entityCount ?? '?'} entities - ${row.analysisResult?.layers?.length ?? 0} layers`
       );
+    } else if (row.fileType === 'pdf') {
+      setGeometryParts([]);
+      const dimCount = row.pdfData?.extracted_dimensions?.length ?? 0;
+      setViewerStatus(
+        `Loaded - ${row.fileName}` + (dimCount > 0 ? ` (${dimCount} dimensions)` : '')
+      );
+    } else if (row.fileType === 'image') {
+      setGeometryParts([]);
+      setViewerStatus(`Loaded - ${row.fileName}`);
     }
   }, [rows]);
 
@@ -184,14 +322,163 @@ export default function App() {
   }, []);
 
   const handleRemovePart = useCallback((partId) => {
+    const row = rows.find(r => r.id === partId);
+    if (row?.imageUrl) URL.revokeObjectURL(row.imageUrl);
     setRows(prev => prev.filter(p => p.id !== partId));
     setGeometryParts(prev => prev.filter(p => p.id !== partId));
     setSelectedRowId(prev => (prev === partId ? null : prev));
-  }, []);
+    setSelectedParts(prev => prev.filter(id => id !== partId));
+  }, [rows]);
 
   const handleFitScreen = useCallback(() => {
     window.dispatchEvent(new CustomEvent('dxf-fit-screen'));
   }, []);
+
+  // -------------------------------------------------------
+  // PART SELECTION FOR NESTING
+  // -------------------------------------------------------
+  const handleTogglePart = useCallback((rowId) => {
+    setSelectedParts(prev =>
+      prev.includes(rowId) ? prev.filter(id => id !== rowId) : [...prev, rowId]
+    );
+  }, []);
+
+  // -------------------------------------------------------
+  // STOCK SETTINGS
+  // -------------------------------------------------------
+  const handleUpdateStock = useCallback((field, value) => {
+    setStock(prev => ({ ...prev, [field]: parseFloat(value) || 0 }));
+  }, []);
+
+  // -------------------------------------------------------
+  // RUN NESTING
+  // -------------------------------------------------------
+  const handleRunNesting = useCallback(async () => {
+    if (rows.length === 0 || isNesting) return;
+
+    const API_BASE = apiBaseRef.current ?? import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+
+    setIsNesting(true);
+    setNestingResult(null);
+
+    try {
+      // Only DXF rows contribute geometry for nesting; PDF/image rows are silently skipped
+      const nestParts = rows
+        .map(row => {
+          const { outer, holes } = extractPolygons(row.geometry);
+          if (outer.length < 3) return null;
+          return {
+            id:       String(row.id),
+            outer,
+            holes,
+            quantity: Math.max(1, Math.floor(row.qty ?? 1)),
+            area:     0,
+          };
+        })
+        .filter(Boolean);
+
+      if (nestParts.length === 0) {
+        console.warn('[NESTING] No valid polygons found in uploaded parts.');
+        setIsNesting(false);
+        return;
+      }
+
+      const body = {
+        parts:     nestParts,
+        stock:     { width: stock.width, height: stock.height, thickness: stock.thickness },
+        step_x:    5.0,
+        step_y:    5.0,
+        margin:    1.0,
+        rotations: [0.0, 90.0],
+      };
+
+      const res = await fetch(`${API_BASE}/nest`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(body),
+      });
+
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.detail || 'Nesting request failed');
+
+      console.log('[NESTING] Placements:', result.placements);
+      setNestingResult(result);
+      setViewMode('nesting');
+
+    } catch (err) {
+      console.error('[NESTING] Failed:', err);
+    } finally {
+      setIsNesting(false);
+    }
+  }, [rows, stock, isNesting]);
+
+  // -------------------------------------------------------
+  // NEST SELECTED PARTS ONLY
+  // -------------------------------------------------------
+  const handleNestSelected = useCallback(async () => {
+    if (selectedParts.length === 0 || isNesting) return;
+
+    const targetRows = rows.filter(r => selectedParts.includes(r.id));
+    if (targetRows.length === 0) return;
+
+    const API_BASE = apiBaseRef.current ?? import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+
+    setIsNesting(true);
+    setNestingResult(null);
+
+    try {
+      const nestParts = targetRows
+        .map(row => {
+          const { outer, holes } = extractPolygons(row.geometry);
+          if (outer.length < 3) return null;
+          return {
+            id:       String(row.id),
+            outer,
+            holes,
+            quantity: Math.max(1, Math.floor(row.qty ?? 1)),
+            area:     0,
+          };
+        })
+        .filter(Boolean);
+
+      if (nestParts.length === 0) {
+        console.warn('[NESTING] No valid polygons found in selected parts.');
+        setIsNesting(false);
+        return;
+      }
+
+      const body = {
+        parts:     nestParts,
+        stock:     { width: stock.width, height: stock.height, thickness: stock.thickness },
+        step_x:    5.0,
+        step_y:    5.0,
+        margin:    1.0,
+        rotations: [0.0, 90.0, 180.0, 270.0],
+      };
+
+      const res = await fetch(`${API_BASE}/nest`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(body),
+      });
+
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.detail || 'Nesting request failed');
+
+      console.log('[NESTING] Selected placements:', result.placements);
+      setNestingResult(result);
+      setViewMode('nesting');
+
+    } catch (err) {
+      console.error('[NESTING] Failed:', err);
+    } finally {
+      setIsNesting(false);
+    }
+  }, [rows, selectedParts, stock, isNesting]);
+
+  // -------------------------------------------------------
+
+  const selectedRow = rows.find(r => r.id === selectedRowId);
 
   return (
     <div className="app-layout">
@@ -234,6 +521,12 @@ export default function App() {
             isLoading={isLoading}
             error={error}
             onStatusChange={setViewerStatus}
+            nestedSheets={nestingResult?.sheets ?? []}
+            viewMode={viewMode}
+            onSetViewMode={setViewMode}
+            fileType={activeFileType}
+            pdfData={selectedRow?.pdfData ?? null}
+            imageUrl={selectedRow?.imageUrl ?? null}
           />
         </main>
 
@@ -247,6 +540,14 @@ export default function App() {
         onRemoveRow={handleRemovePart}
         partsOpen={partsOpen}
         onToggleTable={() => setPartsOpen(v => !v)}
+        stock={stock}
+        onUpdateStock={handleUpdateStock}
+        nestingResult={nestingResult}
+        isNesting={isNesting}
+        onRunNesting={handleRunNesting}
+        selectedParts={selectedParts}
+        onTogglePart={handleTogglePart}
+        onNestSelected={handleNestSelected}
       />
 
       <StatusBar status={viewerStatus} fileName={uploadedFile?.name} />

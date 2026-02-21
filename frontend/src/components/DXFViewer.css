@@ -193,6 +193,112 @@
   margin: 2px 0;
 }
 
+/* ── View mode toggle bar ────────────────────────────────────────────────── */
+.viewer-mode-bar {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 2px;
+  background: rgba(13, 17, 23, 0.92);
+  border: 1px solid #30363d;
+  border-radius: 7px;
+  padding: 3px;
+  z-index: 20;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.55);
+}
+
+.vmb-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 11px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #6e7681;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.vmb-btn:hover:not(.vmb-btn--active) {
+  background: #21262d;
+  color: #c9d1d9;
+  border-color: #30363d;
+}
+
+.vmb-btn--active {
+  background: #388bfd;
+  color: #ffffff;
+  border-color: #388bfd;
+}
+
+.vmb-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.vmb-btn:not(.vmb-btn--active) .vmb-badge {
+  background: rgba(88, 166, 255, 0.2);
+  color: #58a6ff;
+}
+
+/* ── PDF dimension panel ─────────────────────────────────────────────────── */
+.viewer-dim-panel {
+  position: absolute;
+  top: 52px;
+  right: 20px;
+  background: rgba(13, 17, 23, 0.92);
+  border: 1px solid #30363d;
+  border-radius: 7px;
+  padding: 8px 12px;
+  z-index: 20;
+  backdrop-filter: blur(12px);
+  min-width: 120px;
+  max-height: 240px;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.55);
+}
+
+.viewer-dim-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #6e7681;
+  margin-bottom: 6px;
+  user-select: none;
+}
+
+.viewer-dim-item {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-family: 'JetBrains Mono', monospace;
+  color: #00ff88;
+  padding: 3px 0;
+  border-bottom: 1px solid #21262d;
+}
+
+.viewer-dim-item:last-child {
+  border-bottom: none;
+}
+
 /* Navigation hint */
 .viewer-hint {
   position: absolute;

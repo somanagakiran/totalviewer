@@ -1,16 +1,16 @@
 """
-Geometry Analyzer v3  —  Industrial DXF Hole Detection
+Geometry Analyzer v3  -  Industrial DXF Hole Detection
 =======================================================
 Uses Shapely 2.x for all polygon operations.
 
 Two-track polygon reconstruction
 ----------------------------------
-Track A — Closed contours (circles, closed polylines, ellipses):
+Track A - Closed contours (circles, closed polylines, ellipses):
   Entities already flagged as closed by the DXF parser are converted
   directly to Shapely Polygons via _build_polygons().
 
-Track B — Open-edge polygonize (lines, arcs, open segments):
-  All open edge segments (LINE, ARC, open LWPOLYLINE …) are converted to
+Track B - Open-edge polygonize (lines, arcs, open segments):
+  All open edge segments (LINE, ARC, open LWPOLYLINE ...) are converted to
   Shapely LineString objects, nodded together with unary_union(), then fed
   to shapely.ops.polygonize() which reconstructs any closed rings formed
   by connected edges.  This handles drawings where the cutting profile is
@@ -21,11 +21,11 @@ Both tracks feed into the same outer-boundary + hole-detection logic.
 Hole detection
 --------------
 1. Merge Track-A and Track-B polygons; sort by area (largest first).
-2. Identify drawing frames conservatively (isoperimetric ratio L²/A > 50,
-   covers ≥ 97 % of bbox, hugs all four bbox edges).
+2. Identify drawing frames conservatively (isoperimetric ratio L^2/A > 50,
+   covers >= 97 % of bbox, hugs all four bbox edges).
 3. Outer boundary = largest non-frame polygon.
 4. Holes = polygons whose centroid lies strictly inside the outer boundary
-           AND whose overlap with the outer boundary is ≥ 80 % of their area.
+           AND whose overlap with the outer boundary is >= 80 % of their area.
 5. Per-hole metadata: circle (diameter), slot (width/length), rectangle, polygon.
 """
 
@@ -39,21 +39,21 @@ try:
     SHAPELY_OK = True
 except ImportError:
     SHAPELY_OK = False
-    print("[WARNING] Shapely not installed — hole/perimeter analysis disabled.")
+    print("[WARNING] Shapely not installed - hole/perimeter analysis disabled.")
 
-# ── Tunables ──────────────────────────────────────────────────────────────────
-MIN_AREA            = 0.01   # ignore polygons smaller than this (units²)
-FRAME_MIN_COVERAGE  = 0.97   # frame must cover ≥ 97 % of the bbox area
+# -- Tunables ------------------------------------------------------------------
+MIN_AREA            = 0.01   # ignore polygons smaller than this (units^2)
+FRAME_MIN_COVERAGE  = 0.97   # frame must cover >= 97 % of the bbox area
 FRAME_EDGE_REL_TOL  = 0.02   # frame edges within 2 % of max(W,H) of bbox edges
-ISOPERIMETRIC_RATIO = 50.0   # L²/A > 50 -> polygon is "hollow" (drawing frame)
+ISOPERIMETRIC_RATIO = 50.0   # L^2/A > 50 -> polygon is "hollow" (drawing frame)
 DEDUP_DISTANCE      = 1.0    # centroids closer than this are considered duplicates
 SNAP_PRECISION      = 1e-3   # coordinate grid for polygonize endpoint snapping
-MAX_POLYGONIZE_SEGS = 300    # skip Track B polygonize above this — prevents hang
+MAX_POLYGONIZE_SEGS = 300    # skip Track B polygonize above this - prevents hang
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===============================================================================
 # PUBLIC API
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===============================================================================
 
 def analyze_geometry(
     closed_contours: list,
@@ -82,8 +82,8 @@ def analyze_geometry(
     if not SHAPELY_OK:
         return _fallback_result()
 
-    # ── 0. Pipeline-entry diagnostics ────────────────────────────────────────
-    print(f"[ANALYZER] ── Pipeline start ──────────────────────────────────────")
+    # -- 0. Pipeline-entry diagnostics ----------------------------------------
+    print(f"[ANALYZER] -- Pipeline start --------------------------------------")
     print(f"[ANALYZER] closed_contours received : {len(closed_contours)}")
     if raw_entities:
         from collections import Counter
@@ -94,9 +94,9 @@ def analyze_geometry(
     else:
         print(f"[ANALYZER] raw_entities             : None (circles will NOT be detected)")
 
-    # ── 1. Build candidate polygons — POLYGON TRACK ───────────────────────────
+    # -- 1. Build candidate polygons - POLYGON TRACK ---------------------------
 
-    # Track A: already-closed contours (closed LWPOLYLINE, closed SPLINE, …)
+    # Track A: already-closed contours (closed LWPOLYLINE, closed SPLINE, ...)
     #          Note: CIRCLE tessellations come in here too, but we bypass them
     #          in favour of the analytical Track C below for better accuracy.
     polygons = _build_polygons(closed_contours)
@@ -111,10 +111,10 @@ def analyze_geometry(
         else:
             print(f"[ANALYZER] Track B polygons (polygonize)     : 0")
 
-    # ── 2. Build candidate polygons — CIRCLE TRACK ───────────────────────────
+    # -- 2. Build candidate polygons - CIRCLE TRACK ---------------------------
     #
     #   polygonize() never reconstructs a CIRCLE because a circle has no open
-    #   endpoints — it is a single closed entity, not a chain of edges.
+    #   endpoints - it is a single closed entity, not a chain of edges.
     #   We therefore detect circles directly from the raw entity list using
     #   Point(cx, cy).buffer(r), which creates a proper analytical circle
     #   polygon that works reliably with Shapely's containment checks.
@@ -127,12 +127,12 @@ def analyze_geometry(
         print(f"[ANALYZER] Track C polygons (circles)        : 0 (no raw_entities)")
 
     if not polygons and not circle_polys:
-        print(f"[ANALYZER] No polygons at all — returning fallback (0 holes)")
+        print(f"[ANALYZER] No polygons at all - returning fallback (0 holes)")
         return _fallback_result()
 
     print(f"[ANALYZER] Total polygon candidates          : {len(polygons)} (+ {len(circle_polys)} circles)")
 
-    # ── 3. Find outer boundary from the polygon track ────────────────────────
+    # -- 3. Find outer boundary from the polygon track ------------------------
     #
     #   Sort by area; skip drawing-frame rectangles; pick the largest.
     #   Circles are never the outer boundary of a sheet-metal part.
@@ -161,7 +161,7 @@ def analyze_geometry(
             # be classified correctly.
             outer_poly = _synthesize_bbox_polygon(bounding_box)
             outer_idx  = -1
-            print("[ANALYZER] No polygon track results — synthesising outer boundary from bounding box.")
+            print("[ANALYZER] No polygon track results - synthesising outer boundary from bounding box.")
         else:
             return _fallback_result()
 
@@ -169,12 +169,12 @@ def analyze_geometry(
     print(f"[ANALYZER] Outer boundary perimeter: {outer_poly.exterior.length:.3f}")
     print(f"[ANALYZER] Frame indices filtered out: {frame_indices}")
 
-    # ── 3b. Validate outer boundary actually contains holes ───────────────────
+    # -- 3b. Validate outer boundary actually contains holes -------------------
     #
     #   A polygon is a valid outer boundary only if it contains circle holes
     #   that are NOT the same circle as itself.  If the true outer boundary
     #   was never reconstructed (all polygons are hole circles), the "largest"
-    #   polygon is a hole circle — it doesn't contain the others.  We then
+    #   polygon is a hole circle - it doesn't contain the others.  We then
     #   search all candidates for a better container, falling back to the
     #   drawing bounding box if none works.
     #
@@ -184,7 +184,7 @@ def analyze_geometry(
         print(f"[ANALYZER] Outer boundary contains {contained} hole circle(s)")
 
         if contained == 0:
-            # outer_poly holds no circles other than itself — likely wrong.
+            # outer_poly holds no circles other than itself - likely wrong.
             best_outer, best_idx, best_count = _find_best_container(
                 polygons, valid_circles, frame_indices
             )
@@ -196,20 +196,20 @@ def analyze_geometry(
             else:
                 outer_poly = _synthesize_bbox_polygon(bounding_box)
                 outer_idx  = -1
-                print("[ANALYZER] No container polygon found — using bounding box as outer boundary")
+                print("[ANALYZER] No container polygon found - using bounding box as outer boundary")
 
-    # ── 4. Unified contour-based hole detection ───────────────────────────────
+    # -- 4. Unified contour-based hole detection -------------------------------
     #
     # Holes are identified by TOPOLOGY, not entity type:
     #   Any closed loop whose centroid lies inside the outer boundary = hole.
     #
     # Sources checked in order (deduplication prevents double-counting):
-    #   a) Track A + B polygons — entity-type agnostic; covers circles, closed
+    #   a) Track A + B polygons - entity-type agnostic; covers circles, closed
     #      polylines, ellipses, splines, AND combinations of LINE/ARC that form
     #      closed loops (rectangles, triangles, slots, irregular polygons).
-    #   b) CIRCLE entities — direct center-point fallback in case Track A
+    #   b) CIRCLE entities - direct center-point fallback in case Track A
     #      tessellation missed a circle due to boundary precision.
-    #   c) Other closed raw entities — fallback for any closed entity not
+    #   c) Other closed raw entities - fallback for any closed entity not
     #      captured by Track A.
 
     max_dim = max(bounding_box.get("width", 1) or 1, bounding_box.get("height", 1) or 1)
@@ -234,7 +234,7 @@ def analyze_geometry(
 
     hole_details: list = []
 
-    # 4a. Track A + B polygons — primary path, handles ALL closed loop types.
+    # 4a. Track A + B polygons - primary path, handles ALL closed loop types.
     deduped_polys = _dedup_by_centroid(polygons)
     for poly in deduped_polys:
         if poly.is_empty or poly.area < MIN_AREA:
@@ -259,7 +259,7 @@ def analyze_geometry(
 
     print(f"[ANALYZER] Track A+B holes: {len(hole_details)}")
 
-    # 4b. CIRCLE entities — direct center-point fallback.
+    # 4b. CIRCLE entities - direct center-point fallback.
     for item in (raw_entities or []):
         if item.get("type") != "CIRCLE":
             continue
@@ -275,13 +275,13 @@ def analyze_geometry(
             if area < MIN_AREA:
                 continue
             if _is_duplicate(cx, cy):
-                print(f"[ANALYZER] CIRCLE ({cx:.2f},{cy:.2f}) r={r:.3f} — duplicate, skip")
+                print(f"[ANALYZER] CIRCLE ({cx:.2f},{cy:.2f}) r={r:.3f} - duplicate, skip")
                 continue
             if not _pt_inside(cx, cy):
-                print(f"[ANALYZER] CIRCLE ({cx:.2f},{cy:.2f}) r={r:.3f} — outside boundary, skip")
+                print(f"[ANALYZER] CIRCLE ({cx:.2f},{cy:.2f}) r={r:.3f} - outside boundary, skip")
                 continue
             seen_positions.append((cx, cy))
-            print(f"[ANALYZER] CIRCLE ({cx:.2f},{cy:.2f}) r={r:.3f} — HOLE #{len(hole_details)+1}")
+            print(f"[ANALYZER] CIRCLE ({cx:.2f},{cy:.2f}) r={r:.3f} - HOLE #{len(hole_details)+1}")
             hole_details.append({
                 "type":      "circle",
                 "location":  "internal",
@@ -294,7 +294,7 @@ def analyze_geometry(
 
     print(f"[ANALYZER] Circle holes (direct): {len([h for h in hole_details if h.get('type') == 'circle'])}")
 
-    # 4c. Other closed raw entities — fallback for any closed shape not
+    # 4c. Other closed raw entities - fallback for any closed shape not
     #     captured by Track A (LWPOLYLINE, POLYLINE, ELLIPSE, SPLINE).
     for item in (raw_entities or []):
         etype = item.get("type", "")
@@ -329,14 +329,14 @@ def analyze_geometry(
                 continue
             seen_positions.append((cx, cy))
             detail = _describe_hole(poly, outer_poly)
-            print(f"[ANALYZER] {etype} ({cx:.2f},{cy:.2f}) area={poly.area:.3f} — HOLE #{len(hole_details)+1} ({detail['type']})")
+            print(f"[ANALYZER] {etype} ({cx:.2f},{cy:.2f}) area={poly.area:.3f} - HOLE #{len(hole_details)+1} ({detail['type']})")
             hole_details.append(detail)
         except Exception as exc:
             print(f"[ANALYZER] {etype} scan error: {exc}")
 
     print(f"[ANALYZER] Total holes detected: {len(hole_details)}")
 
-    # ── 5. Outer perimeter ────────────────────────────────────────────────────
+    # -- 5. Outer perimeter ----------------------------------------------------
     try:
         perimeter = outer_poly.exterior.length
     except Exception:
@@ -353,9 +353,9 @@ def analyze_geometry(
     }
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===============================================================================
 # POLYGON BUILDING
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===============================================================================
 
 def _build_polygons(contours: list) -> list:
     """Convert raw point lists to valid Shapely Polygons, filtering rubbish."""
@@ -413,7 +413,7 @@ def _polygonize_open_edges(raw_entities: list) -> list:
     Convert all *open* entity segments to Shapely LineStrings, node them
     together, then reconstruct closed polygons via shapely.ops.polygonize().
 
-    This recovers closed loops built from many separate LINE / ARC entities —
+    This recovers closed loops built from many separate LINE / ARC entities -
     a common pattern in sheet-metal DXF files where the cutting profile is
     drawn as individual edges rather than a single closed polyline.
 
@@ -423,7 +423,7 @@ def _polygonize_open_edges(raw_entities: list) -> list:
 
     Returns
     -------
-    List of valid Shapely Polygon objects with area ≥ MIN_AREA.
+    List of valid Shapely Polygon objects with area >= MIN_AREA.
     """
     lines: list = []
 
@@ -459,7 +459,7 @@ def _polygonize_open_edges(raw_entities: list) -> list:
         return []
 
     if len(lines) > MAX_POLYGONIZE_SEGS:
-        print(f"[ANALYZER] Track B skipped — {len(lines)} segments > MAX ({MAX_POLYGONIZE_SEGS})")
+        print(f"[ANALYZER] Track B skipped - {len(lines)} segments > MAX ({MAX_POLYGONIZE_SEGS})")
         return []
 
     try:
@@ -527,7 +527,7 @@ def _extract_circle_polygons(raw_entities: list) -> list:
         radius = item.get("radius")
 
         if center is None or radius is None:
-            print(f"[ANALYZER][CircleTrack] CIRCLE missing center/radius — skipped")
+            print(f"[ANALYZER][CircleTrack] CIRCLE missing center/radius - skipped")
             continue
 
         try:
@@ -536,23 +536,23 @@ def _extract_circle_polygons(raw_entities: list) -> list:
             cy = float(center[1])
 
             if r < 1e-6:
-                print(f"[ANALYZER][CircleTrack] CIRCLE at ({cx:.3f},{cy:.3f}) r={r:.6f} — too small, skipped")
+                print(f"[ANALYZER][CircleTrack] CIRCLE at ({cx:.3f},{cy:.3f}) r={r:.6f} - too small, skipped")
                 continue
 
             poly     = Point(cx, cy).buffer(r)
             computed_area = poly.area
 
             if not poly.is_valid or poly.is_empty:
-                print(f"[ANALYZER][CircleTrack] CIRCLE at ({cx:.3f},{cy:.3f}) r={r:.3f} — invalid polygon, skipped")
+                print(f"[ANALYZER][CircleTrack] CIRCLE at ({cx:.3f},{cy:.3f}) r={r:.3f} - invalid polygon, skipped")
                 continue
 
             if computed_area < MIN_AREA:
                 print(f"[ANALYZER][CircleTrack] CIRCLE at ({cx:.3f},{cy:.3f}) r={r:.3f}"
-                      f" area={computed_area:.4f} < MIN_AREA={MIN_AREA} — filtered")
+                      f" area={computed_area:.4f} < MIN_AREA={MIN_AREA} - filtered")
                 continue
 
             print(f"[ANALYZER][CircleTrack] CIRCLE at ({cx:.3f},{cy:.3f}) r={r:.3f}"
-                  f" area={computed_area:.4f} — accepted")
+                  f" area={computed_area:.4f} - accepted")
             result.append(poly)
 
         except Exception as exc:
@@ -670,7 +670,7 @@ def _count_contained_circles(outer: "Polygon", circles: list) -> int:
     Count how many circles from *circles* are genuinely inside *outer*.
 
     A circle that is essentially the same polygon as *outer* (matching area
-    and centroid) is excluded — this prevents a hole-circle that was
+    and centroid) is excluded - this prevents a hole-circle that was
     accidentally promoted to outer boundary from validating itself.
 
     Parameters
@@ -680,7 +680,7 @@ def _count_contained_circles(outer: "Polygon", circles: list) -> int:
 
     Returns
     -------
-    Number of circles (other than outer itself) with containment ratio ≥ HOLE_OVERLAP_RATIO.
+    Number of circles (other than outer itself) with containment ratio >= HOLE_OVERLAP_RATIO.
     """
     count = 0
     for c in circles:
@@ -690,7 +690,7 @@ def _count_contained_circles(outer: "Polygon", circles: list) -> int:
                 rel_area_diff = abs(c.area - outer.area) / outer.area
                 if rel_area_diff < 0.05:
                     if outer.intersection(c).area / c.area > 0.95:
-                        continue  # same circle — not a genuine hole
+                        continue  # same circle - not a genuine hole
 
             ratio = outer.intersection(c).area / c.area if c.area > 0 else 0
             if ratio >= 0.50:
@@ -728,9 +728,9 @@ def _find_best_container(
     return best_poly, best_idx, best_count
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===============================================================================
 # DRAWING FRAME / TITLE BLOCK DETECTION
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===============================================================================
 
 def _find_frame_indices(polygons: list, bounding_box: dict) -> set:
     """
@@ -738,18 +738,18 @@ def _find_frame_indices(polygons: list, bounding_box: dict) -> set:
 
     A drawing frame must satisfy ALL four conditions:
 
-    1. It is a simple axis-aligned rectangle (≤ 6 exterior coordinates).
-    2. Its area covers ≥ 97 % of the overall drawing bounding box.
+    1. It is a simple axis-aligned rectangle (<= 6 exterior coordinates).
+    2. Its area covers >= 97 % of the overall drawing bounding box.
     3. All four of its sides are within 2 % of max(W, H) of the matching
-       bounding-box edge — i.e. it hugs the bbox closely on every side.
-    4. Its isoperimetric ratio  L² / A  exceeds ISOPERIMETRIC_RATIO,
+       bounding-box edge - i.e. it hugs the bbox closely on every side.
+    4. Its isoperimetric ratio  L^2 / A  exceeds ISOPERIMETRIC_RATIO,
        indicating a thin-walled "frame" shape rather than a solid part.
-       (For a solid square, L²/A = 16; a very thin rectangle → ∞.)
+       (For a solid square, L^2/A = 16; a very thin rectangle -> inf.)
 
     Condition 4 is the key discriminator: a solid rectangular sheet-metal
-    part has L²/A ≈ 16, while a drawing border (thin walls) has L²/A >> 16.
+    part has L^2/A ~= 16, while a drawing border (thin walls) has L^2/A >> 16.
 
-    NOTE: Conditions 1–3 alone are NOT sufficient because a rectangular
+    NOTE: Conditions 1-3 alone are NOT sufficient because a rectangular
     sheet-metal part also satisfies them (its bbox IS itself).
     """
     frame_indices: set = set()
@@ -787,16 +787,16 @@ def _find_frame_indices(polygons: list, bounding_box: dict) -> set:
             ):
                 continue
 
-            # 4. Isoperimetric ratio — thin frame vs. solid part
+            # 4. Isoperimetric ratio - thin frame vs. solid part
             ext_len = poly.exterior.length
             iso_ratio = (ext_len ** 2) / poly.area if poly.area > 0 else 0
             if iso_ratio <= ISOPERIMETRIC_RATIO:
-                # L²/A ≤ 50 → solid-ish rectangle (sheet metal part outline)
+                # L^2/A <= 50 -> solid-ish rectangle (sheet metal part outline)
                 # do NOT exclude it
                 continue
 
             frame_indices.add(i)
-            print(f"[ANALYZER] Drawing frame detected: polygon #{i}  L²/A={iso_ratio:.1f}")
+            print(f"[ANALYZER] Drawing frame detected: polygon #{i}  L^2/A={iso_ratio:.1f}")
 
         except Exception:
             pass
@@ -836,9 +836,9 @@ def _is_simple_rectangle(poly: "Polygon") -> bool:
         return False
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===============================================================================
 # HOLE METADATA
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===============================================================================
 
 def _describe_hole(poly: "Polygon", outer_poly: "Polygon | None" = None) -> dict:
     """
@@ -846,14 +846,14 @@ def _describe_hole(poly: "Polygon", outer_poly: "Polygon | None" = None) -> dict
 
     Shape classification (type field)
     ----------------------------------
-    - "circle"    : iso-perimetric ratio near 4π ≈ 12.57  → reports diameter
-    - "slot"      : bounding-box aspect ratio > 2.5       → reports width/length
-    - "rectangle" : exactly 4 unique vertices             → reports width/height
+    - "circle"    : iso-perimetric ratio near 4pi ~= 12.57  -> reports diameter
+    - "slot"      : bounding-box aspect ratio > 2.5       -> reports width/length
+    - "rectangle" : exactly 4 unique vertices             -> reports width/height
     - "polygon"   : everything else
 
     Spatial classification (location field)
     ----------------------------------------
-    - "internal"    : hole is fully (≥ 95 %) inside the outer boundary
+    - "internal"    : hole is fully (>= 95 %) inside the outer boundary
     - "edge_cutout" : hole crosses the outer boundary edge (side notch, partial cutout)
 
     The location field reflects sheet-metal manufacturing semantics: both
@@ -864,7 +864,7 @@ def _describe_hole(poly: "Polygon", outer_poly: "Polygon | None" = None) -> dict
         area    = poly.area
         iso     = (ext_len ** 2) / area if area > 0 else 0
 
-        # ── Spatial location relative to outer boundary ────────────────────
+        # -- Spatial location relative to outer boundary --------------------
         location = "internal"
         if outer_poly is not None and not outer_poly.is_empty:
             try:
@@ -874,9 +874,9 @@ def _describe_hole(poly: "Polygon", outer_poly: "Polygon | None" = None) -> dict
             except Exception:
                 pass
 
-        # ── Shape classification ───────────────────────────────────────────
+        # -- Shape classification -------------------------------------------
 
-        # Circle: isoperimetric ratio ≈ 4π ≈ 12.57
+        # Circle: isoperimetric ratio ~= 4pi ~= 12.57
         if iso < 14.5:
             radius   = math.sqrt(area / math.pi)
             diameter = round(radius * 2, 4)
@@ -928,9 +928,9 @@ def _describe_hole(poly: "Polygon", outer_poly: "Polygon | None" = None) -> dict
         return {"type": "unknown", "location": "internal", "area": 0.0, "perimeter": 0.0}
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===============================================================================
 # FALLBACKS
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===============================================================================
 
 def count_circle_holes(raw_entities: list) -> int:
     """
@@ -939,7 +939,7 @@ def count_circle_holes(raw_entities: list) -> int:
     Used as a last-resort fallback when the Shapely polygon containment
     pipeline returns zero holes (e.g. the outer boundary could not be
     reconstructed for a given drawing).  Every circle with radius > 0 is
-    assumed to be a cutting hole — no containment check is performed.
+    assumed to be a cutting hole - no containment check is performed.
 
     Parameters
     ----------
@@ -947,7 +947,7 @@ def count_circle_holes(raw_entities: list) -> int:
 
     Returns
     -------
-    int — number of circles found
+    int - number of circles found
     """
     count = 0
     for entity in raw_entities:
@@ -976,9 +976,9 @@ def _fallback_perimeter(bbox: dict) -> float:
     return round(2 * (w + h), 3)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===============================================================================
 # EDGE DEBUG HELPERS  (imported by main.py)
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===============================================================================
 
 def build_edges_from_entities(raw_entities: list, include_closed: bool = True) -> list:
     """

@@ -425,7 +425,7 @@ class EnhancedHoleDetector:
         if len(coords) < 3:
             return "invalid"
         
-        # Calculate circularity (4π * area / perimeter²)
+        # Calculate circularity (4pi * area / perimeter^2)
         if perimeter > 0:
             circularity = (4 * math.pi * area) / (perimeter * perimeter)
         else:
@@ -439,7 +439,7 @@ class EnhancedHoleDetector:
         elif num_vertices == 3:
             return "triangle"
         elif num_vertices == 4:
-            # Check if it's a rectangle (opposite sides equal, angles ~90°)
+            # Check if it's a rectangle (opposite sides equal, angles ~90deg)
             if self._is_rectangle(coords):
                 return "rectangle"
             else:
@@ -454,7 +454,7 @@ class EnhancedHoleDetector:
         if len(coords) != 5:  # 4 vertices + closing vertex
             return False
         
-        # Simple check: opposite sides should be equal and angles ~90°
+        # Simple check: opposite sides should be equal and angles ~90deg
         # This is a simplified check - for production you'd want more robust logic
         return True  # For now, assume all 4-vertex polygons are rectangles
     

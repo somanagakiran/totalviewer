@@ -44,7 +44,7 @@ export default function TopBar({
           </svg>
         </div>
         <span className="brand-name">Total Viewer</span>
-        <span className="brand-tag">DXF Analysis</span>
+        <span className="brand-tag">Drawing Viewer</span>
       </div>
 
       {/* Toolbar Actions */}
@@ -83,7 +83,7 @@ export default function TopBar({
           className="btn-upload"
           onClick={handleUploadClick}
           disabled={isLoading}
-          title="Upload DXF File (or drag and drop)"
+          title="Upload DXF / PDF / Image (or drag and drop)"
         >
           {isLoading ? (
             <>
@@ -95,7 +95,7 @@ export default function TopBar({
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
               </svg>
-              <span className="btn-label">Open DXF</span>
+              <span className="btn-label">Open File</span>
             </>
           )}
         </button>
@@ -143,7 +143,7 @@ export default function TopBar({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".dxf"
+        accept=".dxf,.pdf,.jpg,.jpeg,.png"
         multiple
         style={{ display: 'none' }}
         onChange={handleFileChange}

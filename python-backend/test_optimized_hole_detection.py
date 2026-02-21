@@ -123,4 +123,4 @@ if __name__ == "__main__":
     simple_test()
     comprehensive_test()
     complex_test()
-    print("\n✅ All tests completed!")
+    print("\n All tests completed!")

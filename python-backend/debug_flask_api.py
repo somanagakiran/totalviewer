@@ -103,12 +103,12 @@ def debug_analysis():
     try:
         response = requests.get("http://127.0.0.1:8000/health")
         if response.status_code == 200:
-            print(f"✅ Health check: {response.json()}")
+            print(f" Health check: {response.json()}")
         else:
-            print(f"❌ Health check failed: {response.status_code}")
+            print(f" Health check failed: {response.status_code}")
             return
     except:
-        print("❌ Could not connect to health endpoint")
+        print(" Could not connect to health endpoint")
         return
     
     # Create a test DXF file
@@ -122,13 +122,13 @@ def debug_analysis():
             response = requests.post("http://127.0.0.1:8000/upload", files=files)
         
         if response.status_code != 200:
-            print(f"❌ Upload failed: {response.status_code}")
+            print(f" Upload failed: {response.status_code}")
             print(f"Response: {response.text}")
             return
         
         upload_result = response.json()
         session_id = upload_result['session_id']
-        print(f"✅ Upload successful, session_id: {session_id}")
+        print(f" Upload successful, session_id: {session_id}")
         
         # Let's examine the parsed data in detail
         print(f"\n2. Parsed data details:")
@@ -149,13 +149,13 @@ def debug_analysis():
         response = requests.get(f"http://127.0.0.1:8000/debug/edges?session_id={session_id}")
         if response.status_code == 200:
             debug_result = response.json()
-            print(f"✅ Debug edges: {debug_result.get('count', 0)} edges found")
+            print(f" Debug edges: {debug_result.get('count', 0)} edges found")
             edges = debug_result.get('edges', [])
             print(f"   First 5 edges:")
             for i, edge in enumerate(edges[:5]):
                 print(f"     Edge {i+1}: {edge}")
         else:
-            print(f"❌ Debug edges failed: {response.status_code}")
+            print(f" Debug edges failed: {response.status_code}")
         
         # Step 4: Analyze the uploaded file
         print(f"\n4. Analyzing uploaded file...")
@@ -164,21 +164,21 @@ def debug_analysis():
         
         if response.status_code == 200:
             result = response.json()
-            print(f"✅ Analysis successful")
+            print(f" Analysis successful")
             print(f"   Total holes: {result.get('total_holes', 0)}")
             print(f"   Outer boundary area: {result.get('outer_boundary_area', 0)}")
             print(f"   Hole details: {len(result.get('hole_details', []))} holes")
             for i, hole in enumerate(result.get('hole_details', [])):
                 print(f"     Hole {i+1}: {hole.get('type', 'unknown')} - area: {hole.get('area', 0):.2f}")
         else:
-            print(f"❌ Analysis failed: {response.status_code}")
+            print(f" Analysis failed: {response.status_code}")
             print(f"Response: {response.text}")
             
     except requests.exceptions.ConnectionError:
-        print("❌ Could not connect to Flask API. Make sure it's running on port 8000.")
+        print(" Could not connect to Flask API. Make sure it's running on port 8000.")
         print("Run: python -m uvicorn main:app --reload --port 8000")
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f" Error: {e}")
         import traceback
         traceback.print_exc()
     finally:

@@ -1,5 +1,5 @@
 """
-Geometry Analyzer v4 — Optimized Hole Detection
+Geometry Analyzer v4 - Optimized Hole Detection
 ================================================
 
 Uses the optimized hole detector for improved detection of internal holes
@@ -12,16 +12,16 @@ from typing import Optional, List, Dict, Any
 # Import our optimized hole detector
 from engine.optimized_hole_detector import detect_holes_from_entities, count_holes_by_type
 
-# ── Tunables ──────────────────────────────────────────────────────────────────
-MIN_AREA            = 0.01   # ignore polygons smaller than this (units²)
-FRAME_MIN_COVERAGE  = 0.97   # frame must cover ≥ 97 % of the bbox area
+# -- Tunables ------------------------------------------------------------------
+MIN_AREA            = 0.01   # ignore polygons smaller than this (units^2)
+FRAME_MIN_COVERAGE  = 0.97   # frame must cover >= 97 % of the bbox area
 FRAME_EDGE_REL_TOL  = 0.02   # frame edges within 2 % of max(W,H) of bbox edges
-ISOPERIMETRIC_RATIO = 50.0   # L²/A > 50 -> polygon is "hollow" (drawing frame)
+ISOPERIMETRIC_RATIO = 50.0   # L^2/A > 50 -> polygon is "hollow" (drawing frame)
 DEDUP_DISTANCE      = 0.05   # centroids closer than this are considered duplicates
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===============================================================================
 # PUBLIC API
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===============================================================================
 
 def analyze_geometry(
     closed_contours: list,

@@ -1,1 +1,1 @@
-# Total Viewer — Python Geometry Engine
+# Total Viewer - Python Geometry Engine
