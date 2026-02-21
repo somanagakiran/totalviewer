@@ -1,137 +1,28 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import TopBar from './components/TopBar';
 import LeftPanel from './components/LeftPanel';
 import DXFViewer from './components/DXFViewer';
 import StatusBar from './components/StatusBar';
 import SummaryTable from './components/SummaryTable';
-import ProjectBar from './components/ProjectBar';
-import {
-  fetchProjects,
-  createProject,
-  deleteProject,
-  fetchProjectParts,
-  uploadPartToProject,
-  fetchPartGeometry,
-  uploadDxf,
-} from './api';
 import './App.css';
 
 export default function App() {
 
   const [uploadedFile, setUploadedFile]     = useState(null);
   const [analysisResult, setAnalysisResult] = useState(null);
-
-  // Geometry for all visible parts
   const [geometryParts, setGeometryParts]   = useState([]);
-
   const [isLoading, setIsLoading]           = useState(false);
   const [error, setError]                   = useState(null);
   const [viewerStatus, setViewerStatus]     = useState('Ready');
-
   const [leftPanelOpen, setLeftPanelOpen]   = useState(false);
   const [sidebarOpen, setSidebarOpen]       = useState(true);
   const [partsOpen, setPartsOpen]           = useState(true);
-
-  // Summary table rows
   const [rows, setRows]                     = useState([]);
   const [selectedRowId, setSelectedRowId]   = useState(null);
   const rowCounterRef                       = useRef(0);
+  const apiBaseRef                          = useRef(null);
 
-  // Projects
-  const [projects, setProjects]             = useState([]);
-  const [selectedProjectId, setSelectedProjectId] = useState(null);
-
-  const apiBaseRef = useRef(null);
-
-  // ─────────────────────────────────────────────
-  // LOAD PROJECTS ON MOUNT
-  // ─────────────────────────────────────────────
-  useEffect(() => {
-    fetchProjects()
-      .then(setProjects)
-      .catch(err => console.error('[Projects] Failed to load:', err));
-  }, []);
-
-  // ─────────────────────────────────────────────
-  // PROJECT HANDLERS
-  // ─────────────────────────────────────────────
-  const handleCreateProject = useCallback(async (name) => {
-    try {
-      await createProject(name);
-      const updated = await fetchProjects();
-      setProjects(updated);
-    } catch (err) {
-      console.error('[Projects] Create failed:', err);
-    }
-  }, []);
-
-  const handleDeleteProject = useCallback(async (id) => {
-    try {
-      await deleteProject(id);
-      const updated = await fetchProjects();
-      setProjects(updated);
-      // Clear parts list if the deleted project was selected
-      if (id === selectedProjectId) {
-        setSelectedProjectId(null);
-        setRows([]);
-        setGeometryParts([]);
-        setAnalysisResult(null);
-        setUploadedFile(null);
-        setViewerStatus('Ready');
-      }
-    } catch (err) {
-      console.error('[Projects] Delete failed:', err);
-    }
-  }, [selectedProjectId]);
-
-  const handleSelectProject = useCallback(async (projectId) => {
-    setSelectedProjectId(projectId);
-    setRows([]);
-    setGeometryParts([]);
-    setAnalysisResult(null);
-    setSelectedRowId(null);
-
-    if (!projectId) {
-      setViewerStatus('Ready');
-      return;
-    }
-
-    setViewerStatus('Loading project…');
-    try {
-      const parts = await fetchProjectParts(projectId);
-      if (!Array.isArray(parts) || parts.length === 0) {
-        setViewerStatus('Project is empty — upload a DXF to begin');
-        return;
-      }
-
-      const loaded = parts.map(p => ({
-        id:             p.id,         // DB id doubles as local row id
-        dbPartId:       p.id,         // used for geometry fetch
-        partName:       p.part_name,
-        fileName:       p.file_name,
-        fileSize:       0,
-        material:       p.material || 'MS',
-        holes:          p.holes ?? 0,
-        ep:             p.external_perimeter ?? 0,
-        ip:             p.internal_perimeter ?? 0,
-        geometry:       null,         // fetched on demand when row is clicked
-        analysisResult: { entityCount: 0, layers: [] },
-      }));
-
-      const maxId = Math.max(...loaded.map(r => r.id));
-      rowCounterRef.current = Math.max(rowCounterRef.current, maxId);
-      setRows(loaded);
-      setViewerStatus(`Project loaded — ${loaded.length} part(s)`);
-    } catch (err) {
-      console.error('[Projects] Load parts failed:', err);
-      setViewerStatus('Failed to load project parts');
-    }
-  }, []);
-
-  // ─────────────────────────────────────────────
-  // PANEL HANDLERS
-  // ─────────────────────────────────────────────
-  const closeAllPanels  = useCallback(() => setLeftPanelOpen(false), []);
+  const closeAllPanels   = useCallback(() => setLeftPanelOpen(false), []);
   const handleToggleLeft = useCallback(() => setLeftPanelOpen(v => !v), []);
 
   // ─────────────────────────────────────────────
@@ -199,16 +90,18 @@ export default function App() {
 
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 20000);
+        const formData = new FormData();
+        formData.append('file', file);
 
-        let data;
-        if (selectedProjectId) {
-          // Upload into the selected project — persists to DB
-          data = await uploadPartToProject(selectedProjectId, file, controller.signal);
-        } else {
-          // Session-only upload — no DB persistence
-          data = await uploadDxf(file, controller.signal);
-        }
+        const response = await fetch(`${API_BASE}/upload`, {
+          method: 'POST',
+          body:   formData,
+          signal: controller.signal,
+        });
         clearTimeout(timer);
+
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'Upload failed');
 
         const result = {
           ...data,
@@ -225,7 +118,6 @@ export default function App() {
 
         const newRow = {
           id:             rowId,
-          dbPartId:       data.db_part_id ?? null,  // set only on project uploads
           partName:       `p${rowId}`,
           fileName:       file.name,
           fileSize:       file.size,
@@ -266,13 +158,12 @@ export default function App() {
 
     setIsLoading(false);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProjectId]);
+  }, []);
 
   // ─────────────────────────────────────────────
-  // ROW SELECTION — loads geometry on demand
+  // ROW SELECTION  (geometry always in local state)
   // ─────────────────────────────────────────────
-  const handleSelectRow = useCallback(async (rowId) => {
+  const handleSelectRow = useCallback((rowId) => {
     const row = rows.find(r => r.id === rowId);
     if (!row) return;
 
@@ -281,27 +172,10 @@ export default function App() {
     setUploadedFile({ name: row.fileName, size: row.fileSize });
 
     if (row.geometry) {
-      // Already in memory (fresh upload)
       setGeometryParts([{ id: row.id, geometry: row.geometry }]);
       setViewerStatus(
         `Loaded · ${row.analysisResult?.entityCount ?? '?'} entities · ${row.analysisResult?.layers?.length ?? 0} layers`
       );
-      return;
-    }
-
-    if (row.dbPartId) {
-      // DB-loaded row — fetch geometry from backend
-      setViewerStatus('Loading geometry…');
-      try {
-        const geometry = await fetchPartGeometry(row.dbPartId);
-        // Cache it in the row so next click is instant
-        setRows(prev => prev.map(r => r.id === rowId ? { ...r, geometry } : r));
-        setGeometryParts([{ id: row.id, geometry }]);
-        setViewerStatus(`Loaded · ${row.fileName}`);
-      } catch (err) {
-        console.error('[Viewer] Failed to load geometry:', err);
-        setViewerStatus('Geometry not available');
-      }
     }
   }, [rows]);
 
@@ -331,14 +205,6 @@ export default function App() {
         onToggleLeft={handleToggleLeft}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen(v => !v)}
-      />
-
-      <ProjectBar
-        projects={projects}
-        selectedProjectId={selectedProjectId}
-        onSelectProject={handleSelectProject}
-        onCreateProject={handleCreateProject}
-        onDeleteProject={handleDeleteProject}
       />
 
       <div
