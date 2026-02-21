@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import TopBar from './components/TopBar';
 import LeftPanel from './components/LeftPanel';
 import DXFViewer from './components/DXFViewer';
@@ -31,43 +31,6 @@ export default function App() {
 
   // Stores whichever backend URL (Render or localhost) responded successfully
   const apiBaseRef = useRef(null);
-
-  // ─────────────────────────────────────────────
-  // LOAD PERSISTED PARTS FROM DB ON MOUNT
-  // ─────────────────────────────────────────────
-  useEffect(() => {
-    const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
-
-    (async () => {
-      try {
-        const res = await fetch(`${API_BASE}/parts`);
-        if (!res.ok) return;
-        const parts = await res.json();
-        if (!Array.isArray(parts) || parts.length === 0) return;
-
-        const loaded = parts.map(p => ({
-          id:             p.id,
-          partName:       p.part_name,
-          fileName:       p.file_name,
-          fileSize:       0,
-          material:       p.material || 'MS',
-          holes:          p.holes ?? 0,
-          ep:             p.external_perimeter ?? 0,
-          ip:             p.internal_perimeter ?? 0,
-          geometry:       null,
-          analysisResult: { entityCount: 0, layers: [] },
-        }));
-
-        setRows(loaded);
-
-        // Advance counter past existing DB ids so new uploads get unique local ids
-        const maxId = Math.max(...parts.map(p => p.id));
-        rowCounterRef.current = Math.max(rowCounterRef.current, maxId);
-      } catch (err) {
-        console.error('[Parts] Failed to load from DB:', err);
-      }
-    })();
-  }, []);
 
   const closeAllPanels = useCallback(() => {
     setLeftPanelOpen(false);
@@ -229,7 +192,7 @@ export default function App() {
     setSelectedRowId(prev => (prev === partId ? null : prev));
   }, []);
 
-  const handleSelectRow = useCallback(async (rowId) => {
+  const handleSelectRow = useCallback((rowId) => {
     const row = rows.find(r => r.id === rowId);
     if (!row) return;
 
@@ -238,26 +201,10 @@ export default function App() {
     setUploadedFile({ name: row.fileName, size: row.fileSize });
 
     if (row.geometry) {
-      // Fresh-upload row — geometry already in memory, replace viewer immediately
       setGeometryParts([{ id: row.id, geometry: row.geometry }]);
       setViewerStatus(
         `Loaded · ${row.analysisResult.entityCount ?? '?'} entities · ${row.analysisResult.layers?.length ?? 0} layers`
       );
-      return;
-    }
-
-    // DB-loaded row — fetch geometry from backend
-    const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
-    setViewerStatus('Loading geometry…');
-    try {
-      const res = await fetch(`${API_BASE}/parts/${rowId}/geometry`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const geometry = await res.json();
-      setGeometryParts([{ id: row.id, geometry }]);
-      setViewerStatus(`Loaded · ${row.fileName}`);
-    } catch (err) {
-      console.error('[Viewer] Failed to load geometry:', err);
-      setViewerStatus('Geometry not available');
     }
   }, [rows]);
 
