@@ -70,78 +70,199 @@ function buildGroupFromGeometry(geometry) {
 }
 
 // =========================================================================
-// BUILD THREE.JS GROUP FROM NESTING RESULT (nesting view)
-// Each sheet: dark background + blue border + colored part polygons.
-// Sheets stacked vertically with a gap.
+// NESTING HELPERS
 // =========================================================================
-function buildNestingGroup(sheets) {
-  const group = new THREE.Group();
-  const partColorMap = new Map();
-  let nextColorIdx  = 0;
-  let currentBottom = 0;
-  const SHEET_GAP   = 80;
 
+// Deterministic color from any string — maps to the PART_PALETTE.
+function _hashColor(str) {
+  let h = 0;
+  const s = String(str ?? '');
+  for (let i = 0; i < s.length; i++) {
+    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  }
+  return PART_PALETTE[Math.abs(h) % PART_PALETTE.length];
+}
+
+// Canvas-texture sprite for part name labels.
+function _makeTextSprite(text, color) {
+  const CW = 256, CH = 48;
+  const canvas = document.createElement('canvas');
+  canvas.width  = CW;
+  canvas.height = CH;
+  const ctx = canvas.getContext('2d');
+
+  // Dark semi-transparent background
+  ctx.fillStyle = 'rgba(0,0,0,0.60)';
+  ctx.fillRect(0, 0, CW, CH);
+
+  // Label text in the part's color
+  const hex = '#' + color.toString(16).padStart(6, '0');
+  ctx.font         = 'bold 17px Arial, sans-serif';
+  ctx.fillStyle    = hex;
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Trim long names: keep the last 22 chars so the filename is always readable
+  const display = text.length > 22 ? '\u2026' + text.slice(-21) : text;
+  ctx.fillText(display, CW / 2, CH / 2);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.SpriteMaterial({
+    map: tex, transparent: true, depthWrite: false,
+  });
+  return new THREE.Sprite(mat);
+}
+
+// =========================================================================
+// BUILD THREE.JS GROUP FROM NESTING RESULT
+//
+// Algorithm per placement:
+//   1. Look up the pre-built raw THREE.Group for the part (by file_name /
+//      part_id). The group holds geometry at original DXF coordinates.
+//   2. Clone the entire group: rawGroup.clone(true)
+//   3. Set group position — never touch individual vertex data:
+//        clone.position.x = placement.x - part_min_x
+//        clone.position.y = placement.y - part_min_y
+//   4. Apply sheet vertical offset directly on clone (stacks upward):
+//        clone.position.y += sheet_index * (height + SHEET_GAP)
+//   5. Apply a deterministic color (hashed from file_name) to every
+//      line material in the clone.
+//   6. Add a canvas-texture sprite label at the placed bbox centre.
+//
+// Parameters
+//   sheets  – response.sheets[] from /nest (each has width, height, placements)
+//   parts   – [{id, geometry}] from App state  (DXF entities per part)
+// =========================================================================
+
+function buildNestingGroup(sheets, parts) {
+  const group     = new THREE.Group();
+  const SHEET_GAP = 200;
+
+  // ── Build one raw THREE.Group per unique part ──────────────────────────
+  // rawGroup holds ALL entities at original DXF coordinates.
+  // minX/minY are read from Three.js Box3 — the authoritative bbox of the
+  // rendered geometry, used to normalize the part to the origin before
+  // applying placement offsets.
+  const partMap = new Map();   // String(part.id) -> { rawGroup, minX, minY }
+
+  for (const part of (parts ?? [])) {
+    const geom = Array.isArray(part.geometry) ? part.geometry : [];
+
+    // Build visual group from ALL entities
+    const rawGroup = new THREE.Group();
+    for (const item of geom) {
+      const pts = item.points;
+      if (!pts || pts.length < 2) continue;
+      const pts3 = pts.map(([px, py]) => new THREE.Vector3(px, py, 0));
+      const geo  = new THREE.BufferGeometry().setFromPoints(pts3);
+      const mat  = new THREE.LineBasicMaterial({ color: 0xffffff }); // tinted per clone
+      rawGroup.add(item.closed ? new THREE.LineLoop(geo, mat) : new THREE.Line(geo, mat));
+    }
+
+    // Compute bbox via Three.js — works on the actual rendered geometry
+    const box    = new THREE.Box3().setFromObject(rawGroup);
+    const minX   = isFinite(box.min.x) ? box.min.x : 0;
+    const minY   = isFinite(box.min.y) ? box.min.y : 0;
+
+    partMap.set(String(part.id), { rawGroup, minX, minY });
+  }
+
+  // ── Render each sheet ──────────────────────────────────────────────────
   for (const sheet of sheets) {
-    const { width, height, placements } = sheet;
-    const sheetGroup = new THREE.Group();
+    const {
+      sheet_index = 0,
+      width       = 1000,
+      height      = 500,
+      placements  = [],
+    } = sheet;
 
-    // Sheet background
-    const bgGeo = new THREE.PlaneGeometry(width, height);
-    const bgMat = new THREE.MeshBasicMaterial({
-      color: 0x161b22, transparent: true, opacity: 0.88,
-      side: THREE.DoubleSide, depthWrite: false,
-    });
-    const bg = new THREE.Mesh(bgGeo, bgMat);
-    bg.position.set(width / 2, height / 2, -0.5);
+    // Sheet offset — stacks upward: sheet 0 at y=0, sheet 1 at y=+(h+gap), …
+    const sheetOffsetY = sheet_index * (height + SHEET_GAP);
+
+    // Sheet background — positioned in world space
+    const bg = new THREE.Mesh(
+      new THREE.PlaneGeometry(width, height),
+      new THREE.MeshBasicMaterial({
+        color: 0x161b22, transparent: true, opacity: 0.88,
+        side: THREE.DoubleSide, depthWrite: false,
+      }),
+    );
+    bg.position.set(width / 2, height / 2 + sheetOffsetY, -0.5);
     bg.renderOrder = -1;
-    sheetGroup.add(bg);
+    group.add(bg);
 
-    // Sheet border
-    const borderPts = [
-      new THREE.Vector3(0,     0,      0),
-      new THREE.Vector3(width, 0,      0),
-      new THREE.Vector3(width, height, 0),
-      new THREE.Vector3(0,     height, 0),
-    ];
-    sheetGroup.add(new THREE.LineLoop(
-      new THREE.BufferGeometry().setFromPoints(borderPts),
+    // Sheet border — points at world-space Y positions
+    group.add(new THREE.LineLoop(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0,     sheetOffsetY,          0),
+        new THREE.Vector3(width, sheetOffsetY,          0),
+        new THREE.Vector3(width, height + sheetOffsetY, 0),
+        new THREE.Vector3(0,     height + sheetOffsetY, 0),
+      ]),
       new THREE.LineBasicMaterial({ color: 0x388bfd }),
     ));
 
-    // Corner tick marks
-    const TICK = Math.min(width, height) * 0.012;
-    [[0, 0], [width, 0], [width, height], [0, height]].forEach(([cx, cy]) => {
-      const dx = cx === 0 ? TICK : -TICK;
-      const dy = cy === 0 ? TICK : -TICK;
-      sheetGroup.add(new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints([
-          new THREE.Vector3(cx + dx, cy,      0),
-          new THREE.Vector3(cx,      cy,      0),
-          new THREE.Vector3(cx,      cy + dy, 0),
-        ]),
-        new THREE.LineBasicMaterial({ color: 0x58a6ff }),
-      ));
-    });
-
-    // Placed polygons
+    // ── Placed parts ────────────────────────────────────────────────────
     for (const placement of placements) {
-      const { polygon, part_id } = placement;
-      if (!polygon || polygon.length < 2) continue;
-      if (!partColorMap.has(part_id)) {
-        partColorMap.set(part_id, PART_PALETTE[nextColorIdx % PART_PALETTE.length]);
-        nextColorIdx++;
-      }
-      const pts3 = polygon.map(([x, y]) => new THREE.Vector3(x, y, 0));
-      sheetGroup.add(new THREE.LineLoop(
-        new THREE.BufferGeometry().setFromPoints(pts3),
-        new THREE.LineBasicMaterial({ color: partColorMap.get(part_id) }),
-      ));
-    }
+      const { file_name, part_id, x = 0, y = 0 } = placement;
+      console.log(`[NEST] sheet=${sheet_index} x=${x} y=${y} file=${file_name}`);
 
-    sheetGroup.position.y = currentBottom;
-    currentBottom -= (height + SHEET_GAP);
-    group.add(sheetGroup);
+      // Resolve key: prefer file_name (may equal part_id when not explicitly set)
+      const key = partMap.has(String(file_name))
+        ? String(file_name)
+        : String(part_id);
+      const partData = partMap.get(key);
+      if (!partData) continue;
+
+      const { rawGroup, minX, minY } = partData;
+
+      // Consistent color keyed on file_name so the same DXF always looks the same
+      const color = _hashColor(file_name ?? part_id ?? '');
+
+      // Clone the ENTIRE group — vertex data is never modified
+      const clone = rawGroup.clone(true);
+
+      // 1. Normalize part to origin (subtract DXF min coords)
+      clone.position.x -= minX;
+      clone.position.y -= minY;
+      // 2. Apply nesting placement position
+      clone.position.x += x;
+      clone.position.y += y;
+      // 3. Apply sheet vertical offset (stacks upward)
+      clone.position.y += sheetOffsetY;
+
+      // Apply color to every line in the clone (cloning material to avoid shared state)
+      clone.traverse(child => {
+        if (child.isLine) {
+          child.material = child.material.clone();
+          child.material.color.setHex(color);
+        }
+      });
+
+      group.add(clone);
+
+      // ── Label sprite at the placed bbox centre ─────────────────────────
+      // Recompute the box from the clone to get its world-space extent
+      const cloneBox = new THREE.Box3().setFromObject(clone);
+      const cx = (cloneBox.min.x + cloneBox.max.x) / 2;
+      const cy = (cloneBox.min.y + cloneBox.max.y) / 2;
+      const pw = cloneBox.max.x - cloneBox.min.x;
+      const ph = cloneBox.max.y - cloneBox.min.y;
+
+      const label  = file_name ?? String(part_id);
+      const sprite = _makeTextSprite(label, color);
+
+      // Scale sprite proportionally to part size; clamp so it stays readable
+      sprite.scale.set(
+        Math.max(Math.min(pw * 0.65, 240), 30),
+        Math.max(Math.min(ph * 0.20,  40),  8),
+        1,
+      );
+      sprite.position.set(cx, cy, 0.2);
+      group.add(sprite);
+    }
   }
+
   return group;
 }
 
@@ -271,14 +392,19 @@ export default function DXFViewer({
         if (viewMode === 'nesting') {
           if (!nestedSheets?.length) return;
           onStatusChange?.('Rendering nesting layout...');
-          const group = buildNestingGroup(nestedSheets);
+
+          // Pass parts so buildNestingGroup can look up geometry per placement
+          const group = buildNestingGroup(nestedSheets, parts);
           scene.add(group);
           geoGroupRef.current = group;
           setHasGeo(true);
           fitToScreen(group);
-          const total = nestedSheets.reduce((s, sh) => s + sh.placements.length, 0);
+
+          const totalPlacements = nestedSheets.reduce(
+            (s, sh) => s + (sh.placements?.length ?? 0), 0
+          );
           onStatusChange?.(
-            `Nesting: ${nestedSheets.length} sheet(s), ${total} placement(s)`
+            `Nesting: ${nestedSheets.length} sheet(s) \u00b7 ${totalPlacements} placement(s)`
           );
           return;
         }
