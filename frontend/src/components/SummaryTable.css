@@ -480,6 +480,15 @@ td.st-num {
   animation: st-fadein 0.15s ease;
 }
 
+.st-nest-error {
+  font-size: 11px;
+  color: #f85149;
+  font-weight: 500;
+  flex-shrink: 0;
+  max-width: 280px;
+  animation: st-fadein 0.15s ease;
+}
+
 @keyframes st-fadein {
   from { opacity: 0; transform: translateY(2px); }
   to   { opacity: 1; transform: translateY(0); }

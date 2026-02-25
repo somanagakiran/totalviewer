@@ -204,8 +204,8 @@ function buildNestingGroup(sheets, parts) {
 
     // ── Placed parts ────────────────────────────────────────────────────
     for (const placement of placements) {
-      const { file_name, part_id, x = 0, y = 0 } = placement;
-      console.log(`[NEST] sheet=${sheet_index} x=${x} y=${y} file=${file_name}`);
+      const { file_name, part_id, x = 0, y = 0, rotation = 0 } = placement;
+      console.log(`[NEST] sheet=${sheet_index} x=${x} y=${y} rot=${rotation} file=${file_name}`);
 
       // Resolve key: prefer file_name (may equal part_id when not explicitly set)
       const key = partMap.has(String(file_name))
@@ -223,13 +223,21 @@ function buildNestingGroup(sheets, parts) {
       const clone = rawGroup.clone(true);
 
       // 1. Normalize part to origin (subtract DXF min coords)
-      clone.position.x -= minX;
-      clone.position.y -= minY;
-      // 2. Apply nesting placement position
-      clone.position.x += x;
-      clone.position.y += y;
-      // 3. Apply sheet vertical offset (stacks upward)
-      clone.position.y += sheetOffsetY;
+      clone.position.set(-minX, -minY, 0);
+
+      // 2. Wrap in a pivot so rotation is applied around the normalized origin
+      const pivot = new THREE.Group();
+      pivot.add(clone);
+      pivot.rotation.z = THREE.MathUtils.degToRad(rotation);
+
+      // 3. After rotation, compute world bounding box and translate so its
+      //    minimum corner lands exactly at (x, y + sheetOffsetY)
+      const rotBox = new THREE.Box3().setFromObject(pivot);
+      pivot.position.set(
+        x - rotBox.min.x,
+        y + sheetOffsetY - rotBox.min.y,
+        0,
+      );
 
       // Apply color to every line in the clone (cloning material to avoid shared state)
       clone.traverse(child => {
@@ -239,11 +247,11 @@ function buildNestingGroup(sheets, parts) {
         }
       });
 
-      group.add(clone);
+      group.add(pivot);
 
       // ── Label sprite at the placed bbox centre ─────────────────────────
-      // Recompute the box from the clone to get its world-space extent
-      const cloneBox = new THREE.Box3().setFromObject(clone);
+      // Recompute from the pivot (already in world space after position is set)
+      const cloneBox = new THREE.Box3().setFromObject(pivot);
       const cx = (cloneBox.min.x + cloneBox.max.x) / 2;
       const cy = (cloneBox.min.y + cloneBox.max.y) / 2;
       const pw = cloneBox.max.x - cloneBox.min.x;
@@ -298,6 +306,7 @@ function disposeGroup(group) {
 // =========================================================================
 export default function DXFViewer({
   parts,
+  nestingParts,
   selectedRowId,
   isLoading,
   error,
@@ -393,8 +402,9 @@ export default function DXFViewer({
           if (!nestedSheets?.length) return;
           onStatusChange?.('Rendering nesting layout...');
 
-          // Pass parts so buildNestingGroup can look up geometry per placement
-          const group = buildNestingGroup(nestedSheets, parts);
+          // Use nestingParts (all uploaded DXF rows) so every part's geometry
+          // is available regardless of which row is currently selected.
+          const group = buildNestingGroup(nestedSheets, nestingParts?.length ? nestingParts : parts);
           scene.add(group);
           geoGroupRef.current = group;
           setHasGeo(true);

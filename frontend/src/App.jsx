@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import TopBar from './components/TopBar';
 import LeftPanel from './components/LeftPanel';
 import DXFViewer from './components/DXFViewer';
@@ -71,9 +71,17 @@ export default function App() {
   const rowCounterRef                       = useRef(0);
   const apiBaseRef                          = useRef(null);
 
+  // All DXF rows flattened for nesting view — kept in sync with rows automatically
+  const nestingParts = useMemo(
+    () => rows.filter(r => r.fileType === 'dxf' && r.geometry)
+              .map(r => ({ id: r.id, geometry: r.geometry })),
+    [rows],
+  );
+
   // Nesting state
   const [stock, setStock]                 = useState({ width: 3000, height: 1500, thickness: 3, spacing: 0 });
   const [nestingResult, setNestingResult] = useState(null);
+  const [nestingError, setNestingError]   = useState(null);
   const [isNesting, setIsNesting]         = useState(false);
   const [selectedParts, setSelectedParts] = useState([]);
   const [viewMode, setViewMode]           = useState('original');
@@ -368,6 +376,7 @@ export default function App() {
 
     setIsNesting(true);
     setNestingResult(null);
+    setNestingError(null);
 
     try {
       // Only DXF rows contribute geometry for nesting; PDF/image rows are silently skipped
@@ -411,10 +420,12 @@ export default function App() {
 
       console.log('[NESTING] Placements:', result.placements);
       setNestingResult(result);
+      setNestingError(null);
       setViewMode('nesting');
 
     } catch (err) {
       console.error('[NESTING] Failed:', err);
+      setNestingError(err.message || 'Nesting failed. Try reducing quantity or increasing sheet size.');
     } finally {
       setIsNesting(false);
     }
@@ -433,6 +444,7 @@ export default function App() {
 
     setIsNesting(true);
     setNestingResult(null);
+    setNestingError(null);
 
     try {
       const nestParts = targetRows
@@ -475,10 +487,12 @@ export default function App() {
 
       console.log('[NESTING] Selected placements:', result.placements);
       setNestingResult(result);
+      setNestingError(null);
       setViewMode('nesting');
 
     } catch (err) {
       console.error('[NESTING] Failed:', err);
+      setNestingError(err.message || 'Nesting failed. Try reducing quantity or increasing sheet size.');
     } finally {
       setIsNesting(false);
     }
@@ -525,6 +539,7 @@ export default function App() {
         <main className="viewer-container">
           <DXFViewer
             parts={geometryParts}
+            nestingParts={nestingParts}
             selectedRowId={selectedRowId}
             isLoading={isLoading}
             error={error}
@@ -551,6 +566,7 @@ export default function App() {
         stock={stock}
         onUpdateStock={handleUpdateStock}
         nestingResult={nestingResult}
+        nestingError={nestingError}
         isNesting={isNesting}
         onRunNesting={handleRunNesting}
         selectedParts={selectedParts}

@@ -345,17 +345,17 @@ async def run_nesting(body: NestRequest):
         # Run in a thread - nesting is CPU-bound
         result = await asyncio.wait_for(
             asyncio.to_thread(nest_parts, parts, sheet, config),
-            timeout=60.0,
+            timeout=120.0,
         )
 
         print(f"[NEST] {len(parts)} part type(s) -> "
               f"{result['total_sheets']} sheet(s), "
-              f"utilization={result['utilization']}%")
+              f"utilization={result['utilization']}%, waste={result.get('waste', result.get('waste_percent', 0))}%")
 
         return result
 
     except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="Nesting timed out (60 s limit).")
+        raise HTTPException(status_code=504, detail="Nesting timed out (120 s limit). Try reducing part quantity or increasing step size.")
     except HTTPException:
         raise
     except Exception as exc:

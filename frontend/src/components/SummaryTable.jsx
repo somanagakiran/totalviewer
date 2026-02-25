@@ -12,6 +12,7 @@ export default function SummaryTable({
   stock,
   onUpdateStock,
   nestingResult,
+  nestingError,
   isNesting,
   onRunNesting,
   selectedParts = [],
@@ -269,6 +270,10 @@ export default function SummaryTable({
 
         {nestWarn && (
           <span className="st-nest-warning">Select at least one part first</span>
+        )}
+
+        {nestingError && (
+          <span className="st-nest-error">{nestingError}</span>
         )}
 
         {nestingResult && (
