@@ -198,6 +198,20 @@ export default function SummaryTable({
           />
         </div>
 
+        <div className="st-nesting-field">
+          <label className="st-nesting-field-label">Gap</label>
+          <input
+            className="st-nesting-input"
+            type="number"
+            min="0"
+            step="0.5"
+            value={stock.spacing}
+            onChange={e => onUpdateStock('spacing', e.target.value)}
+            title="Part-to-part spacing (mm)"
+          />
+          <span className="st-nesting-unit">mm</span>
+        </div>
+
         <div className="st-nesting-actions">
           <button
             className={`st-nesting-run${isNesting ? ' st-nesting-run--busy' : ''}`}

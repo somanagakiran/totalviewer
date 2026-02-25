@@ -72,7 +72,7 @@ export default function App() {
   const apiBaseRef                          = useRef(null);
 
   // Nesting state
-  const [stock, setStock]                 = useState({ width: 3000, height: 1500, thickness: 3 });
+  const [stock, setStock]                 = useState({ width: 3000, height: 1500, thickness: 3, spacing: 0 });
   const [nestingResult, setNestingResult] = useState(null);
   const [isNesting, setIsNesting]         = useState(false);
   const [selectedParts, setSelectedParts] = useState([]);
@@ -396,7 +396,7 @@ export default function App() {
         stock:     { width: stock.width, height: stock.height, thickness: stock.thickness },
         step_x:    5.0,
         step_y:    5.0,
-        margin:    1.0,
+        margin:    stock.spacing ?? 0,
         rotations: [0.0, 90.0],
       };
 
@@ -460,7 +460,7 @@ export default function App() {
         stock:     { width: stock.width, height: stock.height, thickness: stock.thickness },
         step_x:    5.0,
         step_y:    5.0,
-        margin:    1.0,
+        margin:    stock.spacing ?? 0,
         rotations: [0.0, 90.0, 180.0, 270.0],
       };
 

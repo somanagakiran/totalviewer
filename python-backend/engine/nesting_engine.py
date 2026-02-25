@@ -198,6 +198,8 @@ def nest_parts(
     cursor_y:          float = 0.0
     current_row_height: float = 0.0
 
+    margin = config.margin if config else 0.0
+
     for piece in pieces:
         pw = piece["part_width"]
         ph = piece["part_height"]
@@ -225,8 +227,9 @@ def nest_parts(
             "rotation":  0,
         })
 
-        cursor_x           += pw
-        current_row_height  = max(current_row_height, ph)
+        # Advance cursor by part size + spacing gap
+        cursor_x           += pw + margin
+        current_row_height  = max(current_row_height, ph + margin)
 
     # Append the last (possibly partial) sheet
     if current_sheet["placements"]:

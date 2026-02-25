@@ -309,6 +309,12 @@ td.st-num {
   border-color: var(--accent, #58a6ff);
 }
 
+.st-nesting-unit {
+  font-size: 10px;
+  color: var(--text-muted, #6e7681);
+  user-select: none;
+}
+
 .st-nesting-run {
   display: inline-flex;
   align-items: center;
