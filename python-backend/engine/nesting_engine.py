@@ -184,7 +184,12 @@ def nest_parts(
                 "part_height": part_height,
             })
 
-    # ── Step 2: pack pieces into sheets ────────────────────────────────────
+    # ── Step 2: sort by height descending (tallest parts first)
+    #   Tallest parts placed first → rows share the same height → no wasted
+    #   headroom above shorter parts → better sheet utilization.
+    pieces.sort(key=lambda p: p["part_height"], reverse=True)
+
+    # ── Step 3: pack sorted pieces into sheets ──────────────────────────────
     sheets_done:   list[dict] = []
     sheet_index:   int        = 0
     current_sheet: dict       = {"sheet_index": 0, "placements": []}

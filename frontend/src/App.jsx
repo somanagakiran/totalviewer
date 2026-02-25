@@ -8,31 +8,39 @@ import './App.css';
 
 // -------------------------------------------------------------
 // POLYGON EXTRACTION
-// Extract the outer boundary and holes from DXF geometry data.
-// Geometry items: { points: [[x,y],...], closed: bool, ... }
-// Largest closed polygon = outer; smaller ones = holes.
+// Build the outer polygon from the full geometry bounding box.
+//
+// Why bbox instead of the largest closed polygon?
+// DXF part outlines are often drawn with open LINE/ARC entities
+// (not closed polylines), so "largest closed polygon" would
+// pick a hole circle, giving a tiny pw/ph.  The nesting engine
+// spaces copies pw apart, but the THREE.js renderer draws the
+// full DXF (including the large open-path outline) for each copy.
+// Result: copies overlap and appear nested inside one another.
+//
+// Using the full-geometry bbox as outer guarantees pw/ph equal
+// the exact rendered width/height (Box3.setFromObject), so every
+// placed copy is spaced correctly and appears side-by-side.
 // -------------------------------------------------------------
-function polyArea(pts) {
-  let a = 0;
-  for (let i = 0; i < pts.length; i++) {
-    const j = (i + 1) % pts.length;
-    a += pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1];
-  }
-  return Math.abs(a) / 2;
-}
-
 function extractPolygons(geometry) {
   if (!Array.isArray(geometry)) return { outer: [], holes: [] };
 
-  const closed = geometry
-    .filter(e => e.closed && Array.isArray(e.points) && e.points.length >= 3)
-    .sort((a, b) => polyArea(b.points) - polyArea(a.points));
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  for (const e of geometry) {
+    for (const pt of (Array.isArray(e.points) ? e.points : [])) {
+      if (pt[0] < minX) minX = pt[0];
+      if (pt[0] > maxX) maxX = pt[0];
+      if (pt[1] < minY) minY = pt[1];
+      if (pt[1] > maxY) maxY = pt[1];
+    }
+  }
 
-  if (closed.length === 0) return { outer: [], holes: [] };
+  if (!isFinite(minX) || maxX <= minX || maxY <= minY) return { outer: [], holes: [] };
 
   return {
-    outer: closed[0].points,
-    holes: closed.slice(1).map(e => e.points),
+    outer: [[minX, minY], [maxX, minY], [maxX, maxY], [minX, maxY]],
+    holes: [],
   };
 }
 
