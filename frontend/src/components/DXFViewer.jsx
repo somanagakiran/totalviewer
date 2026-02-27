@@ -134,7 +134,7 @@ function _makeTextSprite(text, color) {
 //   parts   – [{id, geometry}] from App state  (DXF entities per part)
 // =========================================================================
 
-function buildNestingGroup(sheets, parts) {
+function buildNestingGroup(sheets, parts, edgeGap = 0) {
   const group     = new THREE.Group();
   const SHEET_GAP = 200;
 
@@ -201,6 +201,22 @@ function buildNestingGroup(sheets, parts) {
       ]),
       new THREE.LineBasicMaterial({ color: 0x388bfd }),
     ));
+
+    // Inner usable boundary — dashed line showing edge-gap margin
+    if (edgeGap > 0) {
+      const g  = edgeGap;
+      const innerLine = new THREE.LineLoop(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(g,         sheetOffsetY + g,              0.1),
+          new THREE.Vector3(width - g, sheetOffsetY + g,              0.1),
+          new THREE.Vector3(width - g, height + sheetOffsetY - g,     0.1),
+          new THREE.Vector3(g,         height + sheetOffsetY - g,     0.1),
+        ]),
+        new THREE.LineDashedMaterial({ color: 0xf59e0b, dashSize: 30, gapSize: 15 }),
+      );
+      innerLine.computeLineDistances();
+      group.add(innerLine);
+    }
 
     // ── Placed parts ────────────────────────────────────────────────────
     for (const placement of placements) {
@@ -312,6 +328,7 @@ export default function DXFViewer({
   error,
   onStatusChange,
   nestedSheets = [],
+  nestEdgeGap = 0,
   viewMode = 'original',
   onSetViewMode,
   fileType = 'dxf',
@@ -404,7 +421,7 @@ export default function DXFViewer({
 
           // Use nestingParts (all uploaded DXF rows) so every part's geometry
           // is available regardless of which row is currently selected.
-          const group = buildNestingGroup(nestedSheets, nestingParts?.length ? nestingParts : parts);
+          const group = buildNestingGroup(nestedSheets, nestingParts?.length ? nestingParts : parts, nestEdgeGap ?? 0);
           scene.add(group);
           geoGroupRef.current = group;
           setHasGeo(true);

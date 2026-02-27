@@ -213,6 +213,20 @@ export default function SummaryTable({
           <span className="st-nesting-unit">mm</span>
         </div>
 
+        <div className="st-nesting-field">
+          <label className="st-nesting-field-label">Edge Gap</label>
+          <input
+            className="st-nesting-input"
+            type="number"
+            min="0"
+            step="0.5"
+            value={stock.edge_gap ?? 0}
+            onChange={e => onUpdateStock('edge_gap', e.target.value)}
+            title="Minimum distance from sheet boundary (mm)"
+          />
+          <span className="st-nesting-unit">mm</span>
+        </div>
+
         <div className="st-nesting-actions">
           <button
             className={`st-nesting-run${isNesting ? ' st-nesting-run--busy' : ''}`}

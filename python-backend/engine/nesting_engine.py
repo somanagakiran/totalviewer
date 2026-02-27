@@ -94,6 +94,7 @@ class NestingConfig:
     advanced_mode: bool        = False
     rotation_step: float       = 10.0
     n_passes:      int         = 5
+    edge_gap:      float       = 0.0   # minimum clearance from sheet boundary
 
 
 # ================================================================
@@ -197,6 +198,7 @@ def _curve_candidates(
     sheet_width:  float,
     sheet_height: float,
     margin: float,
+    edge_gap: float = 0.0,
 ) -> list[tuple[float, float]]:
     """
     Generate candidate positions from the actual boundaries of placed polygons.
@@ -242,9 +244,9 @@ def _curve_candidates(
                 (vx - pw,          vy + margin), # above, right-aligned
             )
             for cx, cy in offsets:
-                if (cx > -1e-9 and cy > -1e-9 and
-                        cx + pw <= sheet_width  + 1e-9 and
-                        cy + ph <= sheet_height + 1e-9):
+                if (cx >= edge_gap - 1e-9 and cy >= edge_gap - 1e-9 and
+                        cx + pw <= sheet_width  - edge_gap + 1e-9 and
+                        cy + ph <= sheet_height - edge_gap + 1e-9):
                     key = (round(cx, 3), round(cy, 3))
                     if key not in seen:
                         seen.add(key)
@@ -304,6 +306,7 @@ def _find_best(
     margin:          float,
     step_x:          float = 5.0,            # kept for API compatibility, unused
     step_y:          float = 5.0,            # kept for API compatibility, unused
+    edge_gap:        float = 0.0,            # minimum clearance from sheet boundary
 ) -> Optional[_BestResult]:
     """
     Find the BEST-FIT placement for raw_poly across all rotations.
@@ -325,14 +328,17 @@ def _find_best(
     _PROBE_SHRINK = 1e-4
     best: Optional[_BestResult] = None
 
+    usable_w = max(0.0, sheet_width  - 2.0 * edge_gap)
+    usable_h = max(0.0, sheet_height - 2.0 * edge_gap)
+
     for angle in rotations:
         rotated = shapely_rotate(raw_poly, angle, origin='centroid', use_radians=False)
         minx, miny, maxx, maxy = rotated.bounds
         pw = maxx - minx
         ph = maxy - miny
 
-        if pw > sheet_width + 1e-9 or ph > sheet_height + 1e-9:
-            continue   # part does not fit the sheet at this rotation
+        if pw > usable_w + 1e-9 or ph > usable_h + 1e-9:
+            continue   # part does not fit the usable area at this rotation
 
         # Normalise: bounding box starts at (0, 0)
         normalized = shapely_translate(rotated, -minx, -miny)
@@ -344,8 +350,8 @@ def _find_best(
 
         for (rx, ry, rw, rh) in free_rects:
             if (rw + 1e-9 >= pw and rh + 1e-9 >= ph and
-                    rx + pw <= sheet_width  + 1e-9 and
-                    ry + ph <= sheet_height + 1e-9):
+                    rx + pw <= sheet_width  - edge_gap + 1e-9 and
+                    ry + ph <= sheet_height - edge_gap + 1e-9):
                 lv  = rw * rh - bbox_area
                 key = (round(rx, 4), round(ry, 4))
                 if key not in all_cands or lv < all_cands[key]:
@@ -355,7 +361,7 @@ def _find_best(
         # Generated only when at least one part has been placed.
         if placed_polys:
             for (cx, cy) in _curve_candidates(
-                placed_polys, pw, ph, sheet_width, sheet_height, margin
+                placed_polys, pw, ph, sheet_width, sheet_height, margin, edge_gap
             ):
                 lv  = _leftover_score(cx, cy, pw, ph, free_rects, bbox_area)
                 key = (round(cx, 4), round(cy, 4))
@@ -491,6 +497,10 @@ def nest_parts(
     step_x    = max(config.step_x,   0.1)
     step_y    = max(config.step_y,   0.1)
     rotations = config.rotations if config.rotations else [0.0]
+    edge_gap  = max(getattr(config, 'edge_gap', 0.0), 0.0)
+
+    usable_width  = max(0.0, sheet_width  - 2.0 * edge_gap)
+    usable_height = max(0.0, sheet_height - 2.0 * edge_gap)
 
     # ── Step 1: build Shapely polygons and expand by quantity ───────────────
     pieces:    list[dict] = []
@@ -509,13 +519,13 @@ def nest_parts(
         except Exception:
             continue
 
-        # Pre-check: fits in at least one rotation?
+        # Pre-check: fits in at least one rotation (within usable area)?
         fits_sheet = False
         for angle in rotations:
             rot = shapely_rotate(raw, angle, origin='centroid', use_radians=False)
             bx1, by1, bx2, by2 = rot.bounds
-            if ((bx2 - bx1) <= sheet_width  + 1e-9 and
-                    (by2 - by1) <= sheet_height + 1e-9):
+            if ((bx2 - bx1) <= usable_width  + 1e-9 and
+                    (by2 - by1) <= usable_height + 1e-9):
                 fits_sheet = True
                 break
 
@@ -542,7 +552,7 @@ def nest_parts(
             placed_polys    = [],
             placed_buffered = [],
             tree            = None,
-            free_rects      = [(0.0, 0.0, sheet_width, sheet_height)],
+            free_rects      = [(edge_gap, edge_gap, usable_width, usable_height)],
         )
 
     current = _new_sheet()
@@ -563,7 +573,7 @@ def nest_parts(
                 state.placed_polys,    # actual shapes for curve-space candidates
                 state.placed_buffered,
                 state.tree,
-                margin, step_x, step_y,
+                margin, step_x, step_y, edge_gap,
             )
             if result is not None:
                 leftover, x, y, angle, candidate = result
@@ -593,7 +603,7 @@ def nest_parts(
                 current.placed_polys,
                 current.placed_buffered,
                 current.tree,
-                margin, step_x, step_y,
+                margin, step_x, step_y, edge_gap,
             )
             if result is not None:
                 leftover, x, y, angle, candidate = result

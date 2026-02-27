@@ -79,7 +79,7 @@ export default function App() {
   );
 
   // Nesting state
-  const [stock, setStock]                 = useState({ width: 3000, height: 1500, thickness: 3, spacing: 0 });
+  const [stock, setStock]                 = useState({ width: 3000, height: 1500, thickness: 3, spacing: 0, edge_gap: 0 });
   const [nestingResult, setNestingResult] = useState(null);
   const [nestingError, setNestingError]   = useState(null);
   const [isNesting, setIsNesting]         = useState(false);
@@ -407,6 +407,7 @@ export default function App() {
         step_y:    5.0,
         margin:    stock.spacing ?? 0,
         rotations: [0.0, 90.0],
+        edge_gap:  stock.edge_gap ?? 0,
       };
 
       const res = await fetch(`${API_BASE}/nest`, {
@@ -474,6 +475,7 @@ export default function App() {
         step_y:    5.0,
         margin:    stock.spacing ?? 0,
         rotations: [0.0, 90.0, 180.0, 270.0],
+        edge_gap:  stock.edge_gap ?? 0,
       };
 
       const res = await fetch(`${API_BASE}/nest`, {
@@ -545,6 +547,7 @@ export default function App() {
             error={error}
             onStatusChange={setViewerStatus}
             nestedSheets={nestingResult?.sheets ?? []}
+            nestEdgeGap={stock.edge_gap ?? 0}
             viewMode={viewMode}
             onSetViewMode={setViewMode}
             fileType={activeFileType}

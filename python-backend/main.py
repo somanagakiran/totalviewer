@@ -60,6 +60,7 @@ class NestRequest(BaseModel):
     step_y:    float       = 1.0
     margin:    float       = 0.0
     rotations: list[float] = [0.0, 90.0]
+    edge_gap:  float       = 0.0
 
 
 # -------------------------------------------------------------
@@ -340,6 +341,7 @@ async def run_nesting(body: NestRequest):
             step_y    = max(body.step_y, 0.01),
             margin    = max(body.margin, 0.0),
             rotations = body.rotations if body.rotations else [0.0],
+            edge_gap  = max(body.edge_gap, 0.0),
         )
 
         # Run in a thread - nesting is CPU-bound
