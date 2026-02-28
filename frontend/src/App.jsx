@@ -4,8 +4,8 @@ import LeftPanel    from './components/LeftPanel';
 import DXFViewer    from './components/DXFViewer';
 import StatusBar    from './components/StatusBar';
 import SummaryTable from './components/SummaryTable';
-import AppSettings  from './components/AppSettings';
-import QuoteModal   from './components/QuoteModal';
+import AppSettings    from './components/AppSettings';
+import QuotationView  from './components/QuotationView';
 import './App.css';
 
 // -------------------------------------------------------------
@@ -75,9 +75,9 @@ export default function App() {
   const [viewMode, setViewMode]           = useState('original');
   const [activeFileType, setActiveFileType] = useState('dxf');
 
-  // Modal state (no auth)
+  // Modal / view state
   const [showSettings, setShowSettings] = useState(false);
-  const [showQuote, setShowQuote]       = useState(false);
+  const [quoteMode, setQuoteMode]       = useState(false);
 
   const closeAllPanels   = useCallback(() => setLeftPanelOpen(false), []);
   const handleToggleLeft = useCallback(() => setLeftPanelOpen(v => !v), []);
@@ -351,6 +351,18 @@ export default function App() {
 
   const selectedRow = rows.find(r => r.id === selectedRowId);
 
+  // ── Quote mode: full-screen quotation replaces the entire workspace ──
+  if (quoteMode) {
+    return (
+      <QuotationView
+        rows={rows}
+        apiBase={API_BASE}
+        stock={stock}
+        onBack={() => setQuoteMode(false)}
+      />
+    );
+  }
+
   return (
     <div className="app-layout">
 
@@ -364,7 +376,7 @@ export default function App() {
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen(v => !v)}
         onOpenSettings={() => setShowSettings(true)}
-        onOpenQuote={() => setShowQuote(true)}
+        onOpenQuote={() => setQuoteMode(true)}
       />
 
       <div
@@ -434,13 +446,6 @@ export default function App() {
         />
       )}
 
-      {showQuote && (
-        <QuoteModal
-          apiBase={API_BASE}
-          rows={rows}
-          onClose={() => setShowQuote(false)}
-        />
-      )}
 
     </div>
   );
