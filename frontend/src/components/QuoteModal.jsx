@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import './QuoteModal.css';
 
 const MM_TO_M = 0.001;
@@ -24,10 +24,8 @@ export default function QuoteModal({ onClose, rows, apiBase }) {
   const [quoteDate, setQuoteDate]   = useState(new Date().toISOString().split('T')[0]);
   const [customer, setCustomer]     = useState({ name: '', company: '', gst: '', address: '' });
   const [notes, setNotes]           = useState('');
-  const printRef = useRef(null);
-
   useEffect(() => {
-    fetch(`${apiBase}/admin/settings`)
+    fetch(`${apiBase}/settings`)
       .then(r => r.json())
       .then(data => {
         setSettings(data);
@@ -155,7 +153,7 @@ export default function QuoteModal({ onClose, rows, apiBase }) {
           </div>
 
           {/* ── Quote document ── */}
-          <div className="qm-doc" ref={printRef}>
+          <div className="qm-doc">
 
             {/* Company header */}
             <div className="qm-doc-header">
@@ -256,28 +254,17 @@ export default function QuoteModal({ onClose, rows, apiBase }) {
             {/* Footer strip */}
             <div className="qm-doc-footer">
               <div className="qm-footer-left">
-                {s.terms_and_conditions && (
+                {s.footer_text && (
                   <div className="qm-terms">
-                    <div className="qm-section-label">Terms &amp; Conditions</div>
-                    <div className="qm-terms-text">{s.terms_and_conditions}</div>
-                  </div>
-                )}
-                {s.bank_details && (
-                  <div className="qm-bank">
-                    <div className="qm-section-label">Bank Details</div>
-                    <div className="qm-bank-text">{s.bank_details}</div>
+                    <div className="qm-section-label">Terms, Conditions &amp; Bank Details</div>
+                    <div className="qm-terms-text">{s.footer_text}</div>
                   </div>
                 )}
               </div>
               <div className="qm-footer-right">
                 <div className="qm-sig-area">
                   <div className="qm-sig-line" />
-                  <div className="qm-sig-name">
-                    {s.company_name || 'Your Company'}
-                  </div>
-                  {s.signature_name && (
-                    <div className="qm-sig-person">{s.signature_name}</div>
-                  )}
+                  <div className="qm-sig-name">{s.company_name || 'Your Company'}</div>
                   <div className="qm-sig-label">Authorised Signatory</div>
                 </div>
               </div>

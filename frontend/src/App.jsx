@@ -1,12 +1,11 @@
-import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
-import TopBar      from './components/TopBar';
-import LeftPanel   from './components/LeftPanel';
-import DXFViewer   from './components/DXFViewer';
-import StatusBar   from './components/StatusBar';
+import { useState, useCallback, useRef, useMemo } from 'react';
+import TopBar       from './components/TopBar';
+import LeftPanel    from './components/LeftPanel';
+import DXFViewer    from './components/DXFViewer';
+import StatusBar    from './components/StatusBar';
 import SummaryTable from './components/SummaryTable';
-import LoginModal  from './components/LoginModal';
-import AdminPanel  from './components/AdminPanel';
-import QuoteModal  from './components/QuoteModal';
+import AppSettings  from './components/AppSettings';
+import QuoteModal   from './components/QuoteModal';
 import './App.css';
 
 // -------------------------------------------------------------
@@ -26,9 +25,7 @@ function extractPolygons(geometry) {
       if (pt[1] > maxY) maxY = pt[1];
     }
   }
-
   if (!isFinite(minX) || maxX <= minX || maxY <= minY) return { outer: [], holes: [] };
-
   return {
     outer: [[minX, minY], [maxX, minY], [maxX, maxY], [minX, maxY]],
     holes: [],
@@ -45,25 +42,6 @@ function fileExt(file) {
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
-
-// -------------------------------------------------------------
-// AUTH HELPERS  (localStorage)
-// -------------------------------------------------------------
-const AUTH_KEY = 'tv_auth';
-
-function loadAuth() {
-  try {
-    const raw = localStorage.getItem(AUTH_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveAuth(data) {
-  if (data) localStorage.setItem(AUTH_KEY, JSON.stringify(data));
-  else localStorage.removeItem(AUTH_KEY);
-}
 
 // -------------------------------------------------------------
 
@@ -83,54 +61,23 @@ export default function App() {
   const rowCounterRef                       = useRef(0);
   const apiBaseRef                          = useRef(null);
 
-  // All DXF rows flattened for nesting view — kept in sync with rows automatically
   const nestingParts = useMemo(
     () => rows.filter(r => r.fileType === 'dxf' && r.geometry)
               .map(r => ({ id: r.id, geometry: r.geometry })),
     [rows],
   );
 
-  // Nesting state
   const [stock, setStock]                 = useState({ width: 3000, height: 1500, thickness: 3, spacing: 0, edge_gap: 0 });
   const [nestingResult, setNestingResult] = useState(null);
   const [nestingError, setNestingError]   = useState(null);
   const [isNesting, setIsNesting]         = useState(false);
   const [selectedParts, setSelectedParts] = useState([]);
   const [viewMode, setViewMode]           = useState('original');
-
-  // Multi-format viewer state
   const [activeFileType, setActiveFileType] = useState('dxf');
 
-  // ── Auth state ──────────────────────────────────────────────
-  const [authUser, setAuthUser] = useState(loadAuth);
-
-  // ── Modal state ─────────────────────────────────────────────
-  const [showLogin, setShowLogin]     = useState(false);
-  const [showAdmin, setShowAdmin]     = useState(false);
-  const [showQuote, setShowQuote]     = useState(false);
-
-  // Persist auth on change
-  useEffect(() => { saveAuth(authUser); }, [authUser]);
-
-  const handleLogin = useCallback((data) => {
-    setAuthUser(data);
-    setShowLogin(false);
-    // If the user logged in via "Admin" button, open the panel
-    setShowAdmin(true);
-  }, []);
-
-  const handleLogout = useCallback(async () => {
-    if (authUser?.token) {
-      try {
-        await fetch(`${API_BASE}/auth/logout`, {
-          method:  'POST',
-          headers: { 'Authorization': `Bearer ${authUser.token}` },
-        });
-      } catch { /* ignore */ }
-    }
-    setAuthUser(null);
-    setShowAdmin(false);
-  }, [authUser]);
+  // Modal state (no auth)
+  const [showSettings, setShowSettings] = useState(false);
+  const [showQuote, setShowQuote]       = useState(false);
 
   const closeAllPanels   = useCallback(() => setLeftPanelOpen(false), []);
   const handleToggleLeft = useCallback(() => setLeftPanelOpen(v => !v), []);
@@ -166,22 +113,11 @@ export default function App() {
       const imageUrl = URL.createObjectURL(file);
       rowCounterRef.current += 1;
       const rowId = rowCounterRef.current;
-
       setRows(prev => [...prev, {
-        id:             rowId,
-        partName:       `p${rowId}`,
-        fileName:       file.name,
-        fileSize:       file.size,
-        fileType:       'image',
-        imageUrl,
-        pdfData:        null,
-        material:       'N/A',
-        qty:            1,
-        holes:          0,
-        ep:             0,
-        ip:             0,
-        geometry:       null,
-        analysisResult: null,
+        id: rowId, partName: `p${rowId}`, fileName: file.name, fileSize: file.size,
+        fileType: 'image', imageUrl, pdfData: null,
+        material: 'N/A', qty: 1, holes: 0, ep: 0, ip: 0,
+        geometry: null, analysisResult: null,
       }]);
       setSelectedRowId(rowId);
       setActiveFileType('image');
@@ -193,24 +129,20 @@ export default function App() {
 
     setIsLoading(true);
     setAnalysisResult(null);
-    setViewerStatus('Connecting to Python engine...');
-
-    const PRIMARY  = API_BASE;
-    const FALLBACK = import.meta.env.VITE_API_FALLBACK_URL ?? 'http://localhost:8000';
+    setViewerStatus('Connecting to Python engine…');
 
     const tryPing = async (base) => {
       const hc = new AbortController();
       const t  = setTimeout(() => hc.abort(), 4000);
-      try {
-        const r = await fetch(`${base}/health`, { signal: hc.signal });
-        return r.ok;
-      } catch { return false; }
-      finally  { clearTimeout(t); }
+      try   { const r = await fetch(`${base}/health`, { signal: hc.signal }); return r.ok; }
+      catch { return false; }
+      finally { clearTimeout(t); }
     };
 
     let resolvedBase = null;
-    if (await tryPing(PRIMARY))       resolvedBase = PRIMARY;
-    else if (await tryPing(FALLBACK)) resolvedBase = FALLBACK;
+    if      (await tryPing(API_BASE))                              resolvedBase = API_BASE;
+    else if (await tryPing(import.meta.env.VITE_API_FALLBACK_URL ?? 'http://localhost:8000'))
+                                                                   resolvedBase = import.meta.env.VITE_API_FALLBACK_URL ?? 'http://localhost:8000';
     else {
       setError('Cannot reach backend. Ensure Python server is running.');
       setViewerStatus('Error loading file');
@@ -219,63 +151,42 @@ export default function App() {
     }
     apiBaseRef.current = resolvedBase;
 
-    let lastDxfResult = null;
-    let lastFile      = null;
-    let processed     = 0;
+    let lastDxfResult = null, lastFile = null, processed = 0;
 
     for (const file of backendFiles) {
       const ext = fileExt(file);
       try {
         setViewerStatus(
           backendFiles.length > 1
-            ? `Uploading ${file.name} (${processed + 1}/${backendFiles.length})...`
-            : 'Uploading to Python engine...'
+            ? `Uploading ${file.name} (${processed + 1}/${backendFiles.length})…`
+            : 'Uploading to Python engine…'
         );
         setUploadedFile(file);
 
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 30000);
-        const formData = new FormData();
-        formData.append('file', file);
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 30000);
+        const fd    = new FormData();
+        fd.append('file', file);
 
-        const response = await fetch(`${resolvedBase}/upload-drawing`, {
-          method: 'POST',
-          body:   formData,
-          signal: controller.signal,
-        });
+        const res  = await fetch(`${resolvedBase}/upload-drawing`, { method: 'POST', body: fd, signal: ctrl.signal });
         clearTimeout(timer);
-
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.detail || 'Upload failed');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Upload failed');
 
         rowCounterRef.current += 1;
         const rowId = rowCounterRef.current;
 
         if (ext === 'dxf') {
-          const result = {
-            ...data,
-            entityCount: data.entities,
-            boundingBox: data.bounding_box,
-          };
-          const part = data.parts?.[0];
-          const ep   = part?.external_perimeter ?? data.external_perimeter ?? data.perimeter ?? 0;
-          const ip   = part?.internal_perimeter ?? data.internal_perimeter ?? 0;
+          const result = { ...data, entityCount: data.entities, boundingBox: data.bounding_box };
+          const part   = data.parts?.[0];
+          const ep     = part?.external_perimeter ?? data.external_perimeter ?? data.perimeter ?? 0;
+          const ip     = part?.internal_perimeter ?? data.internal_perimeter ?? 0;
 
           setRows(prev => [...prev, {
-            id:             rowId,
-            partName:       `p${rowId}`,
-            fileName:       file.name,
-            fileSize:       file.size,
-            fileType:       'dxf',
-            imageUrl:       null,
-            pdfData:        null,
-            material:       'MS',
-            qty:            1,
-            holes:          data.holes ?? 0,
-            ep:             ep ?? 0,
-            ip:             ip ?? 0,
-            geometry:       data.geometry,
-            analysisResult: result,
+            id: rowId, partName: `p${rowId}`, fileName: file.name, fileSize: file.size,
+            fileType: 'dxf', imageUrl: null, pdfData: null,
+            material: 'MS', qty: 1, holes: data.holes ?? 0,
+            ep, ip, geometry: data.geometry, analysisResult: result,
           }]);
           setSelectedRowId(rowId);
           setGeometryParts(prev => [...prev, { id: rowId, geometry: data.geometry }]);
@@ -285,37 +196,23 @@ export default function App() {
 
         } else if (ext === 'pdf') {
           const pdfData = {
-            page_image_b64:       data.page_image_b64,
-            vector_lines:         data.vector_lines ?? [],
+            page_image_b64: data.page_image_b64,
+            vector_lines:   data.vector_lines ?? [],
             extracted_dimensions: data.extracted_dimensions ?? [],
-            width:                data.width,
-            height:               data.height,
+            width: data.width, height: data.height,
           };
-
           setRows(prev => [...prev, {
-            id:             rowId,
-            partName:       `p${rowId}`,
-            fileName:       file.name,
-            fileSize:       file.size,
-            fileType:       'pdf',
-            imageUrl:       null,
-            pdfData,
-            material:       'N/A',
-            qty:            1,
-            holes:          0,
-            ep:             0,
-            ip:             0,
-            geometry:       null,
-            analysisResult: null,
+            id: rowId, partName: `p${rowId}`, fileName: file.name, fileSize: file.size,
+            fileType: 'pdf', imageUrl: null, pdfData,
+            material: 'N/A', qty: 1, holes: 0, ep: 0, ip: 0,
+            geometry: null, analysisResult: null,
           }]);
           setSelectedRowId(rowId);
           setGeometryParts([]);
           setActiveFileType('pdf');
           setViewerStatus(
             `Loaded - ${file.name}` +
-            (pdfData.extracted_dimensions.length > 0
-              ? ` (${pdfData.extracted_dimensions.length} dimensions found)`
-              : '')
+            (pdfData.extracted_dimensions.length > 0 ? ` (${pdfData.extracted_dimensions.length} dimensions found)` : '')
           );
           lastFile = file;
         }
@@ -346,12 +243,11 @@ export default function App() {
   }, []);
 
   // -------------------------------------------------------
-  // ROW SELECTION
+  // ROW MANAGEMENT
   // -------------------------------------------------------
   const handleSelectRow = useCallback((rowId) => {
     const row = rows.find(r => r.id === rowId);
     if (!row) return;
-
     setSelectedRowId(rowId);
     setAnalysisResult(row.analysisResult);
     setUploadedFile({ name: row.fileName, size: row.fileSize });
@@ -359,15 +255,11 @@ export default function App() {
 
     if (row.fileType === 'dxf' && row.geometry) {
       setGeometryParts([{ id: row.id, geometry: row.geometry }]);
-      setViewerStatus(
-        `Loaded - ${row.analysisResult?.entityCount ?? '?'} entities - ${row.analysisResult?.layers?.length ?? 0} layers`
-      );
+      setViewerStatus(`Loaded - ${row.analysisResult?.entityCount ?? '?'} entities - ${row.analysisResult?.layers?.length ?? 0} layers`);
     } else if (row.fileType === 'pdf') {
       setGeometryParts([]);
-      const dimCount = row.pdfData?.extracted_dimensions?.length ?? 0;
-      setViewerStatus(
-        `Loaded - ${row.fileName}` + (dimCount > 0 ? ` (${dimCount} dimensions)` : '')
-      );
+      const dc = row.pdfData?.extracted_dimensions?.length ?? 0;
+      setViewerStatus(`Loaded - ${row.fileName}` + (dc > 0 ? ` (${dc} dimensions)` : ''));
     } else if (row.fileType === 'image') {
       setGeometryParts([]);
       setViewerStatus(`Loaded - ${row.fileName}`);
@@ -391,138 +283,69 @@ export default function App() {
     window.dispatchEvent(new CustomEvent('dxf-fit-screen'));
   }, []);
 
-  // -------------------------------------------------------
-  // PART SELECTION FOR NESTING
-  // -------------------------------------------------------
   const handleTogglePart = useCallback((rowId) => {
-    setSelectedParts(prev =>
-      prev.includes(rowId) ? prev.filter(id => id !== rowId) : [...prev, rowId]
-    );
+    setSelectedParts(prev => prev.includes(rowId) ? prev.filter(id => id !== rowId) : [...prev, rowId]);
   }, []);
 
-  // -------------------------------------------------------
-  // STOCK SETTINGS
-  // -------------------------------------------------------
   const handleUpdateStock = useCallback((field, value) => {
     setStock(prev => ({ ...prev, [field]: parseFloat(value) || 0 }));
   }, []);
 
   // -------------------------------------------------------
-  // RUN NESTING
+  // NESTING
   // -------------------------------------------------------
+  const _nestParts = (targetRows) =>
+    targetRows
+      .map(row => {
+        const { outer, holes } = extractPolygons(row.geometry);
+        if (outer.length < 3) return null;
+        return { id: String(row.id), outer, holes, quantity: Math.max(1, Math.floor(row.qty ?? 1)), area: 0 };
+      })
+      .filter(Boolean);
+
+  const _runNest = useCallback(async (nestParts, rotations = [0.0, 90.0]) => {
+    const base = apiBaseRef.current ?? API_BASE;
+    const body = {
+      parts: nestParts,
+      stock: { width: stock.width, height: stock.height, thickness: stock.thickness },
+      step_x: 5.0, step_y: 5.0,
+      margin:    stock.spacing ?? 0,
+      rotations,
+      edge_gap:  stock.edge_gap ?? 0,
+    };
+    const res    = await fetch(`${base}/nest`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.detail || 'Nesting request failed');
+    return result;
+  }, [stock]);
+
   const handleRunNesting = useCallback(async () => {
     if (rows.length === 0 || isNesting) return;
-
-    const base = apiBaseRef.current ?? API_BASE;
-
-    setIsNesting(true);
-    setNestingResult(null);
-    setNestingError(null);
-
+    setIsNesting(true); setNestingResult(null); setNestingError(null);
     try {
-      const nestParts = rows
-        .map(row => {
-          const { outer, holes } = extractPolygons(row.geometry);
-          if (outer.length < 3) return null;
-          return {
-            id:       String(row.id),
-            outer,
-            holes,
-            quantity: Math.max(1, Math.floor(row.qty ?? 1)),
-            area:     0,
-          };
-        })
-        .filter(Boolean);
-
-      if (nestParts.length === 0) {
-        setIsNesting(false);
-        return;
-      }
-
-      const body = {
-        parts:     nestParts,
-        stock:     { width: stock.width, height: stock.height, thickness: stock.thickness },
-        step_x:    5.0,
-        step_y:    5.0,
-        margin:    stock.spacing ?? 0,
-        rotations: [0.0, 90.0],
-        edge_gap:  stock.edge_gap ?? 0,
-      };
-
-      const res    = await fetch(`${base}/nest`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.detail || 'Nesting request failed');
-
-      setNestingResult(result);
-      setNestingError(null);
-      setViewMode('nesting');
-
+      const nestParts = _nestParts(rows);
+      if (!nestParts.length) return;
+      const result = await _runNest(nestParts);
+      setNestingResult(result); setNestingError(null); setViewMode('nesting');
     } catch (err) {
-      setNestingError(err.message || 'Nesting failed. Try reducing quantity or increasing sheet size.');
-    } finally {
-      setIsNesting(false);
-    }
-  }, [rows, stock, isNesting]);
+      setNestingError(err.message || 'Nesting failed.');
+    } finally { setIsNesting(false); }
+  }, [rows, _runNest, isNesting]);
 
-  // -------------------------------------------------------
-  // NEST SELECTED PARTS ONLY
-  // -------------------------------------------------------
   const handleNestSelected = useCallback(async () => {
     if (selectedParts.length === 0 || isNesting) return;
-
     const targetRows = rows.filter(r => selectedParts.includes(r.id));
-    if (targetRows.length === 0) return;
-
-    const base = apiBaseRef.current ?? API_BASE;
-
-    setIsNesting(true);
-    setNestingResult(null);
-    setNestingError(null);
-
+    if (!targetRows.length) return;
+    setIsNesting(true); setNestingResult(null); setNestingError(null);
     try {
-      const nestParts = targetRows
-        .map(row => {
-          const { outer, holes } = extractPolygons(row.geometry);
-          if (outer.length < 3) return null;
-          return {
-            id:       String(row.id),
-            outer,
-            holes,
-            quantity: Math.max(1, Math.floor(row.qty ?? 1)),
-            area:     0,
-          };
-        })
-        .filter(Boolean);
-
-      if (nestParts.length === 0) {
-        setIsNesting(false);
-        return;
-      }
-
-      const body = {
-        parts:     nestParts,
-        stock:     { width: stock.width, height: stock.height, thickness: stock.thickness },
-        step_x:    5.0,
-        step_y:    5.0,
-        margin:    stock.spacing ?? 0,
-        rotations: [0.0, 90.0, 180.0, 270.0],
-        edge_gap:  stock.edge_gap ?? 0,
-      };
-
-      const res    = await fetch(`${base}/nest`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.detail || 'Nesting request failed');
-
-      setNestingResult(result);
-      setNestingError(null);
-      setViewMode('nesting');
-
+      const nestParts = _nestParts(targetRows);
+      if (!nestParts.length) return;
+      const result = await _runNest(nestParts, [0.0, 90.0, 180.0, 270.0]);
+      setNestingResult(result); setNestingError(null); setViewMode('nesting');
     } catch (err) {
-      setNestingError(err.message || 'Nesting failed. Try reducing quantity or increasing sheet size.');
-    } finally {
-      setIsNesting(false);
-    }
-  }, [rows, selectedParts, stock, isNesting]);
+      setNestingError(err.message || 'Nesting failed.');
+    } finally { setIsNesting(false); }
+  }, [rows, selectedParts, _runNest, isNesting]);
 
   // -------------------------------------------------------
 
@@ -540,11 +363,7 @@ export default function App() {
         onToggleLeft={handleToggleLeft}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen(v => !v)}
-        // Auth + modals
-        authUser={authUser}
-        onOpenAdmin={() => setShowAdmin(true)}
-        onOpenLogin={() => setShowLogin(true)}
-        onLogout={handleLogout}
+        onOpenSettings={() => setShowSettings(true)}
         onOpenQuote={() => setShowQuote(true)}
       />
 
@@ -554,7 +373,6 @@ export default function App() {
       />
 
       <div className="app-body">
-
         <div className={`sidebar-wrap${sidebarOpen ? '' : ' sidebar-wrap--collapsed'}`}>
           <LeftPanel
             fileName={uploadedFile?.name}
@@ -585,7 +403,6 @@ export default function App() {
             imageUrl={selectedRow?.imageUrl ?? null}
           />
         </main>
-
       </div>
 
       <SummaryTable
@@ -610,20 +427,10 @@ export default function App() {
       <StatusBar status={viewerStatus} fileName={uploadedFile?.name} />
 
       {/* ── Modals ── */}
-
-      {showLogin && (
-        <LoginModal
+      {showSettings && (
+        <AppSettings
           apiBase={API_BASE}
-          onLogin={handleLogin}
-          onClose={() => setShowLogin(false)}
-        />
-      )}
-
-      {showAdmin && authUser?.role === 'admin' && (
-        <AdminPanel
-          apiBase={API_BASE}
-          token={authUser.token}
-          onClose={() => setShowAdmin(false)}
+          onClose={() => setShowSettings(false)}
         />
       )}
 

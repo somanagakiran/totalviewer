@@ -11,7 +11,7 @@
   user-select: none;
 }
 
-/* Brand */
+/* ── Brand ──────────────────────────────────────────────────── */
 .topbar-brand {
   display: flex;
   align-items: center;
@@ -50,7 +50,7 @@
   text-transform: uppercase;
 }
 
-/* Actions */
+/* ── Actions row ────────────────────────────────────────────── */
 .topbar-actions {
   display: flex;
   align-items: center;
@@ -58,122 +58,48 @@
   margin-left: 16px;
 }
 
-.btn-upload {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 7px 16px;
-  background: var(--accent-blue);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s, opacity 0.15s;
-  font-family: inherit;
-  white-space: nowrap;
-}
-
-.btn-upload:hover:not(:disabled) {
-  background: var(--accent-blue-hover);
-}
-
-.btn-upload:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* Add Quote Button — mirrors btn-upload geometry/typography, uses green accent */
-.btn-quote {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 7px 16px;
-  background: var(--accent-green);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s, opacity 0.15s;
-  font-family: inherit;
-  white-space: nowrap;
-}
-
-.btn-quote:hover {
-  background: #56d36b;
-}
-
-.btn-quote:active {
-  background: #2ea043;
-}
-
-/* Admin Panel button */
-.btn-admin {
+/* ── Shared base for primary action buttons ─────────────────── */
+.btn-upload,
+.btn-quote,
+.btn-settings {
   display: flex;
   align-items: center;
   gap: 7px;
   padding: 7px 14px;
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-primary);
   border-radius: 6px;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background 0.15s, opacity 0.15s;
   font-family: inherit;
   white-space: nowrap;
+  color: white;
+  border: none;
 }
 
-.btn-admin:hover {
+/* Open File — blue */
+.btn-upload { background: var(--accent-blue); padding: 7px 16px; }
+.btn-upload:hover:not(:disabled) { background: var(--accent-blue-hover); }
+.btn-upload:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Add Quote — green */
+.btn-quote  { background: var(--accent-green); }
+.btn-quote:hover  { background: #56d36b; }
+.btn-quote:active { background: #2ea043; }
+
+/* Settings — neutral, outlined */
+.btn-settings {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-secondary);
+}
+.btn-settings:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
-  border-color: #f0883e;
+  border-color: var(--border-accent);
 }
 
-.btn-admin--active {
-  background: rgba(240, 136, 62, 0.12);
-  border-color: rgba(240, 136, 62, 0.45);
-  color: #f0883e;
-}
-
-.btn-admin--active:hover {
-  background: rgba(240, 136, 62, 0.2);
-  color: #f0883e;
-}
-
-/* Logout pill */
-.btn-logout {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  background: transparent;
-  border: 1px solid var(--border-primary);
-  border-radius: 20px;
-  color: var(--text-muted);
-  font-size: 11.5px;
-  font-family: inherit;
-  cursor: pointer;
-  transition: all 0.15s;
-  white-space: nowrap;
-}
-
-.btn-logout:hover {
-  background: rgba(248, 81, 73, 0.1);
-  border-color: rgba(248, 81, 73, 0.4);
-  color: #f85149;
-}
-
-.btn-label-sm {
-  max-width: 80px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
+/* ── Icon-only square ───────────────────────────────────────── */
 .btn-icon {
   display: flex;
   align-items: center;
@@ -187,55 +113,13 @@
   cursor: pointer;
   transition: all 0.15s;
 }
-
 .btn-icon:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
   border-color: var(--border-accent);
 }
 
-.topbar-separator {
-  width: 1px;
-  height: 20px;
-  background: var(--border-primary);
-  margin: 0 4px;
-}
-
-.topbar-hint {
-  font-size: 11px;
-  color: var(--text-muted);
-  letter-spacing: 0.2px;
-}
-
-/* File name */
-.topbar-filename {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-  padding: 5px 12px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-primary);
-  border-radius: 6px;
-  color: var(--text-accent);
-  max-width: 300px;
-  overflow: hidden;
-}
-
-.topbar-filename svg {
-  flex-shrink: 0;
-  color: var(--text-secondary);
-}
-
-.topbar-filename span {
-  font-size: 12px;
-  font-family: 'JetBrains Mono', monospace;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Sidebar toggle — always visible on all screen sizes */
+/* ── Sidebar toggle ─────────────────────────────────────────── */
 .btn-sidebar-toggle {
   display: flex;
   align-items: center;
@@ -250,20 +134,18 @@
   transition: all 0.15s;
   flex-shrink: 0;
 }
-
 .btn-sidebar-toggle:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
   border-color: var(--border-accent);
 }
-
 .btn-sidebar-toggle.active {
   background: rgba(56, 139, 253, 0.12);
   border-color: var(--accent-blue);
   color: var(--accent-blue);
 }
 
-/* Panel toggle buttons — hidden on desktop (≥992px), shown on tablet/mobile */
+/* ── Panel toggle (tablet / mobile only) ───────────────────── */
 .btn-panel-toggle {
   display: none;
   align-items: center;
@@ -278,55 +160,55 @@
   transition: all 0.15s;
   flex-shrink: 0;
 }
-
 .btn-panel-toggle.active {
   background: rgba(56, 139, 253, 0.12);
   border-color: var(--accent-blue);
   color: var(--accent-blue);
 }
-
 .btn-panel-toggle:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
   border-color: var(--border-accent);
 }
 
-/* ── Responsive breakpoints ─────────────────────────────────────────────── */
-
-/* Tablet (768–991px): show panel toggles, collapse hint + separator */
-@media (max-width: 991px) {
-  .btn-panel-toggle { display: flex; }
-  .topbar-hint      { display: none; }
-  .topbar-separator { display: none; }
+/* ── Separator + hint ───────────────────────────────────────── */
+.topbar-separator {
+  width: 1px;
+  height: 20px;
+  background: var(--border-primary);
+  margin: 0 4px;
 }
 
-/* Mobile (≤767px): compact toolbar height + tighter padding */
-@media (max-width: 767px) {
-  .topbar         { padding: 0 10px; gap: 6px; height: 48px; }
-  .brand-tag      { display: none; }
-  .topbar-filename { display: none; } /* filename lives in status bar on mobile */
-  .btn-upload,
-  .btn-quote,
-  .btn-admin      { padding: 6px 10px; font-size: 12px; gap: 5px; }
-  .topbar-actions { margin-left: 8px; gap: 6px; }
-  .btn-logout     { display: none; }
+.topbar-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.2px;
 }
 
-/* Small mobile (≤480px): hide brand name text to free space */
-@media (max-width: 480px) {
-  .brand-name     { display: none; }
-  .topbar-actions { margin-left: 4px; }
+/* ── File name chip ─────────────────────────────────────────── */
+.topbar-filename {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 5px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  color: var(--text-accent);
+  max-width: 300px;
+  overflow: hidden;
+}
+.topbar-filename svg  { flex-shrink: 0; color: var(--text-secondary); }
+.topbar-filename span {
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* Extra-small (≤380px): icon-only primary buttons */
-@media (max-width: 380px) {
-  .btn-label      { display: none; }
-  .btn-upload,
-  .btn-quote,
-  .btn-admin      { padding: 6px 8px; gap: 0; }
-}
-
-/* Spinner */
+/* ── Spinner ─────────────────────────────────────────────────── */
 .spinner-sm {
   width: 13px;
   height: 13px;
@@ -337,7 +219,33 @@
   display: inline-block;
   flex-shrink: 0;
 }
+@keyframes spin { to { transform: rotate(360deg); } }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+/* ── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 991px) {
+  .btn-panel-toggle { display: flex; }
+  .topbar-hint      { display: none; }
+  .topbar-separator { display: none; }
+}
+
+@media (max-width: 767px) {
+  .topbar          { padding: 0 10px; gap: 6px; height: 48px; }
+  .brand-tag       { display: none; }
+  .topbar-filename { display: none; }
+  .btn-upload,
+  .btn-quote,
+  .btn-settings    { padding: 6px 10px; font-size: 12px; gap: 5px; }
+  .topbar-actions  { margin-left: 8px; gap: 6px; }
+}
+
+@media (max-width: 480px) {
+  .brand-name     { display: none; }
+  .topbar-actions { margin-left: 4px; }
+}
+
+@media (max-width: 380px) {
+  .btn-label      { display: none; }
+  .btn-upload,
+  .btn-quote,
+  .btn-settings   { padding: 6px 8px; gap: 0; }
 }

@@ -5,21 +5,16 @@ export default function TopBar({
   fileName, onFileUpload, onFitScreen, isLoading,
   leftPanelOpen, onToggleLeft,
   sidebarOpen, onToggleSidebar,
-  // Auth & modals
-  authUser, onOpenAdmin, onOpenLogin, onLogout, onOpenQuote,
+  onOpenSettings,
+  onOpenQuote,
 }) {
   const fileInputRef = useRef(null);
 
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
-  };
+  const handleUploadClick = () => fileInputRef.current?.click();
 
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files ?? []);
-    if (files.length > 0) {
-      onFileUpload(files);
-      e.target.value = '';
-    }
+    if (files.length > 0) { onFileUpload(files); e.target.value = ''; }
   };
 
   const handleDrop = (e) => {
@@ -28,18 +23,10 @@ export default function TopBar({
     if (files.length > 0) onFileUpload(files);
   };
 
-  // Admin button: if logged in as admin → open panel; else → open login
-  const handleAdminClick = () => {
-    if (authUser?.role === 'admin') {
-      onOpenAdmin();
-    } else {
-      onOpenLogin();
-    }
-  };
-
   return (
-    <header className="topbar" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
-      {/* Logo / App Name */}
+    <header className="topbar" onDragOver={e => e.preventDefault()} onDrop={handleDrop}>
+
+      {/* Brand */}
       <div className="topbar-brand">
         <div className="brand-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -50,14 +37,14 @@ export default function TopBar({
         <span className="brand-tag">Drawing Viewer</span>
       </div>
 
-      {/* Toolbar Actions */}
+      {/* Actions */}
       <div className="topbar-actions">
 
         {/* Sidebar toggle */}
         <button
           className={`btn-sidebar-toggle${sidebarOpen ? '' : ' active'}`}
           onClick={onToggleSidebar}
-          title={sidebarOpen ? 'Hide file info sidebar' : 'Show file info sidebar'}
+          title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
           aria-label="Toggle sidebar"
           aria-pressed={!sidebarOpen}
         >
@@ -81,17 +68,15 @@ export default function TopBar({
           </svg>
         </button>
 
+        {/* Open File */}
         <button
           className="btn-upload"
           onClick={handleUploadClick}
           disabled={isLoading}
-          title="Upload DXF / PDF / Image (or drag and drop)"
+          title="Upload DXF / PDF / Image"
         >
           {isLoading ? (
-            <>
-              <span className="spinner-sm" />
-              <span className="btn-label">Processing...</span>
-            </>
+            <><span className="spinner-sm" /><span className="btn-label">Processing…</span></>
           ) : (
             <>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -102,11 +87,11 @@ export default function TopBar({
           )}
         </button>
 
-        {/* Add Quote button */}
+        {/* Add Quote */}
         <button
           className="btn-quote"
           onClick={onOpenQuote}
-          title="Generate quotation for loaded parts"
+          title="Generate a quotation for loaded parts"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
@@ -115,41 +100,21 @@ export default function TopBar({
           <span className="btn-label">Add Quote</span>
         </button>
 
-        {/* Admin Panel button */}
+        {/* Settings ⚙ */}
         <button
-          className={`btn-admin${authUser?.role === 'admin' ? ' btn-admin--active' : ''}`}
-          onClick={handleAdminClick}
-          title={authUser?.role === 'admin' ? 'Admin Panel' : 'Admin Login'}
+          className="btn-settings"
+          onClick={onOpenSettings}
+          title="App Settings"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="8" r="4"/>
-            <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
           </svg>
-          <span className="btn-label">
-            {authUser?.role === 'admin' ? 'Admin' : 'Admin'}
-          </span>
+          <span className="btn-label">Settings</span>
         </button>
 
-        {/* Logout button — only shown when logged in */}
-        {authUser && (
-          <button
-            className="btn-logout"
-            onClick={onLogout}
-            title={`Logout (${authUser.username})`}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
-            </svg>
-            <span className="btn-label-sm">{authUser.username}</span>
-          </button>
-        )}
-
         {fileName && (
-          <button
-            className="btn-icon"
-            onClick={onFitScreen}
-            title="Fit drawing to screen"
-          >
+          <button className="btn-icon" onClick={onFitScreen} title="Fit drawing to screen">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>
             </svg>
@@ -157,11 +122,10 @@ export default function TopBar({
         )}
 
         <div className="topbar-separator" />
-
         <span className="topbar-hint">Scroll / Pinch to zoom &nbsp;·&nbsp; Drag to pan</span>
       </div>
 
-      {/* File Name Display */}
+      {/* File name chip */}
       {fileName && (
         <div className="topbar-filename">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

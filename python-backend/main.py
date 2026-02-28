@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Request, Header
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
@@ -8,8 +8,6 @@ import uuid
 import time
 import asyncio
 import sqlite3
-import hashlib
-import secrets
 from pathlib import Path
 
 from engine.dxf_parser import parse_dxf
@@ -20,11 +18,11 @@ from engine.nesting_engine import PolygonPart, StockSheet, NestingConfig, nest_p
 
 
 # -------------------------------------------------------------
-# DATABASE  (SQLite — no external server required)
+# DATABASE  (SQLite — auto-created, no server required)
 # -------------------------------------------------------------
 
-DB_PATH   = Path(__file__).parent / "totalviewer.db"
-LOGO_DIR  = Path(__file__).parent / "logos"
+DB_PATH  = Path(__file__).parent / "totalviewer.db"
+LOGO_DIR = Path(__file__).parent / "logos"
 LOGO_DIR.mkdir(exist_ok=True)
 
 
@@ -39,69 +37,29 @@ def _init_db() -> None:
     cur  = conn.cursor()
 
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            username      TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            role          TEXT DEFAULT 'user'
-        )
-    """)
-
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS admin_settings (
+        CREATE TABLE IF NOT EXISTS app_settings (
             id                     INTEGER PRIMARY KEY DEFAULT 1,
-            company_name           TEXT DEFAULT 'Your Company',
-            address                TEXT DEFAULT '',
-            gst_number             TEXT DEFAULT '',
-            contact_info           TEXT DEFAULT '',
-            logo_filename          TEXT DEFAULT NULL,
-            price_per_kg           REAL DEFAULT 0.0,
-            price_per_hour         REAL DEFAULT 0.0,
-            cutting_cost_per_meter REAL DEFAULT 0.0,
-            minimum_charge         REAL DEFAULT 0.0,
-            tax_percent            REAL DEFAULT 18.0,
-            terms_and_conditions   TEXT DEFAULT 'Standard terms and conditions apply.',
-            bank_details           TEXT DEFAULT '',
-            signature_name         TEXT DEFAULT ''
+            company_name           TEXT    DEFAULT 'Your Company',
+            address                TEXT    DEFAULT '',
+            gst_number             TEXT    DEFAULT '',
+            logo_filename          TEXT    DEFAULT NULL,
+            price_per_kg           REAL    DEFAULT 0.0,
+            price_per_hour         REAL    DEFAULT 0.0,
+            cutting_cost_per_meter REAL    DEFAULT 0.0,
+            minimum_charge         REAL    DEFAULT 0.0,
+            tax_percent            REAL    DEFAULT 18.0,
+            footer_text            TEXT    DEFAULT 'Thank you for your business.'
         )
     """)
 
-    # Seed the single settings row
-    cur.execute("INSERT OR IGNORE INTO admin_settings (id) VALUES (1)")
-
-    # Default admin user  (admin / admin123)
-    admin_hash = hashlib.sha256("admin123".encode()).hexdigest()
-    cur.execute(
-        "INSERT OR IGNORE INTO users (username, password_hash, role) VALUES ('admin', ?, 'admin')",
-        (admin_hash,),
-    )
-
+    cur.execute("INSERT OR IGNORE INTO app_settings (id) VALUES (1)")
     conn.commit()
     conn.close()
 
 
-# Active auth tokens  {token: {username, role}}
-_active_tokens: dict = {}
-
-
-def _verify_token(token: str) -> dict | None:
-    return _active_tokens.get(token)
-
-
-def _require_admin(authorization: str | None) -> dict:
-    token = (authorization or "").removeprefix("Bearer ").strip()
-    info  = _verify_token(token)
-    if not info or info.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
-    return info
-
-
 # -------------------------------------------------------------
-# IN-MEMORY STORES  (no database required for DXF sessions)
+# IN-MEMORY STORES
 # -------------------------------------------------------------
-
-parts_memory:    list = []
-projects_memory: list = []
 
 SESSIONS: dict = {}
 
@@ -129,18 +87,13 @@ class NestStockInput(BaseModel):
 
 
 class NestRequest(BaseModel):
-    parts: list[NestPartInput]
-    stock: NestStockInput
+    parts:     list[NestPartInput]
+    stock:     NestStockInput
     step_x:    float       = 1.0
     step_y:    float       = 1.0
     margin:    float       = 0.0
     rotations: list[float] = [0.0, 90.0]
     edge_gap:  float       = 0.0
-
-
-class LoginRequest(BaseModel):
-    username: str
-    password: str
 
 
 # -------------------------------------------------------------
@@ -213,7 +166,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialise database on startup
 _init_db()
 
 
@@ -237,76 +189,41 @@ def list_sessions():
 
 
 # -------------------------------------------------------------
-# AUTH
+# APP SETTINGS  (no authentication — open access)
 # -------------------------------------------------------------
 
-@app.post("/auth/login")
-def auth_login(body: LoginRequest):
-    pw_hash = hashlib.sha256(body.password.encode()).hexdigest()
+@app.get("/settings")
+def get_settings():
+    """Return current app settings (company info, pricing, footer)."""
     conn = _get_db()
-    row  = conn.execute(
-        "SELECT username, role FROM users WHERE username=? AND password_hash=?",
-        (body.username, pw_hash),
-    ).fetchone()
-    conn.close()
-
-    if not row:
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-
-    token = secrets.token_hex(32)
-    _active_tokens[token] = {"username": row["username"], "role": row["role"]}
-    return {"token": token, "username": row["username"], "role": row["role"]}
-
-
-@app.post("/auth/logout")
-def auth_logout(authorization: str | None = Header(default=None)):
-    token = (authorization or "").removeprefix("Bearer ").strip()
-    _active_tokens.pop(token, None)
-    return {"ok": True}
-
-
-# -------------------------------------------------------------
-# ADMIN SETTINGS
-# -------------------------------------------------------------
-
-@app.get("/admin/settings")
-def get_admin_settings():
-    """Public read — used by Add Quote to fetch pricing + company info."""
-    conn = _get_db()
-    row  = conn.execute("SELECT * FROM admin_settings WHERE id=1").fetchone()
+    row  = conn.execute("SELECT * FROM app_settings WHERE id=1").fetchone()
     conn.close()
     if not row:
         return {}
     data = dict(row)
-    # Replace raw filename with a usable URL
-    data["logo_url"] = "/admin/logo" if data.get("logo_filename") else None
+    data["logo_url"] = "/settings/logo" if data.get("logo_filename") else None
     data.pop("logo_filename", None)
     return data
 
 
-@app.put("/admin/settings")
-async def update_admin_settings(
-    request:       Request,
-    authorization: str | None = Header(default=None),
-):
-    """Admin-only: update settings."""
-    _require_admin(authorization)
+@app.put("/settings")
+async def update_settings(request: Request):
+    """Update app settings."""
     body = await request.json()
 
-    allowed_fields = {
-        "company_name", "address", "gst_number", "contact_info",
+    allowed = {
+        "company_name", "address", "gst_number",
         "price_per_kg", "price_per_hour", "cutting_cost_per_meter",
-        "minimum_charge", "tax_percent",
-        "terms_and_conditions", "bank_details", "signature_name",
+        "minimum_charge", "tax_percent", "footer_text",
     }
-    updates = {k: v for k, v in body.items() if k in allowed_fields}
+    updates = {k: v for k, v in body.items() if k in allowed}
     if not updates:
         return {"ok": True}
 
     set_clause = ", ".join(f"{k}=?" for k in updates)
     conn = _get_db()
     conn.execute(
-        f"UPDATE admin_settings SET {set_clause} WHERE id=1",
+        f"UPDATE app_settings SET {set_clause} WHERE id=1",
         list(updates.values()),
     )
     conn.commit()
@@ -314,39 +231,33 @@ async def update_admin_settings(
     return {"ok": True}
 
 
-@app.post("/admin/logo")
-async def upload_logo(
-    file:          UploadFile = File(...),
-    authorization: str | None = Header(default=None),
-):
-    """Admin-only: upload company logo."""
-    _require_admin(authorization)
-
+@app.post("/settings/logo")
+async def upload_logo(file: UploadFile = File(...)):
+    """Upload company logo (PNG, JPG, SVG, WEBP)."""
     ext = Path(file.filename).suffix.lower()
     if ext not in {".jpg", ".jpeg", ".png", ".svg", ".webp"}:
         raise HTTPException(status_code=400, detail="Logo must be jpg/png/svg/webp")
 
-    logo_path = LOGO_DIR / f"company_logo{ext}"
-    # Remove old logos with different extension
+    # Remove any previous logo
     for old in LOGO_DIR.glob("company_logo.*"):
         old.unlink(missing_ok=True)
 
-    content = await file.read()
-    logo_path.write_bytes(content)
+    logo_path = LOGO_DIR / f"company_logo{ext}"
+    logo_path.write_bytes(await file.read())
 
     conn = _get_db()
-    conn.execute("UPDATE admin_settings SET logo_filename=? WHERE id=1", (str(logo_path),))
+    conn.execute("UPDATE app_settings SET logo_filename=? WHERE id=1", (str(logo_path),))
     conn.commit()
     conn.close()
 
-    return {"ok": True, "logo_url": "/admin/logo"}
+    return {"ok": True, "logo_url": "/settings/logo"}
 
 
-@app.get("/admin/logo")
+@app.get("/settings/logo")
 def get_logo():
-    """Serve the company logo."""
+    """Serve the company logo file."""
     conn = _get_db()
-    row  = conn.execute("SELECT logo_filename FROM admin_settings WHERE id=1").fetchone()
+    row  = conn.execute("SELECT logo_filename FROM app_settings WHERE id=1").fetchone()
     conn.close()
 
     if not row or not row["logo_filename"]:
@@ -411,9 +322,6 @@ async def upload_dxf(file: UploadFile = File(...)):
 async def upload_drawing(file: UploadFile = File(...)):
     """
     Unified upload endpoint supporting .dxf and .pdf files.
-
-    - .dxf  : identical behavior to /upload (parse + analyze geometry)
-    - .pdf  : rasterize page to PNG, extract dimensions and vector lines
     """
     ext = Path(file.filename).suffix.lower()
 
@@ -425,12 +333,10 @@ async def upload_drawing(file: UploadFile = File(...)):
 
     tmp_path = None
     try:
-        suffix = ext
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
             tmp.write(await file.read())
             tmp_path = tmp.name
 
-        # ── DXF branch ────────────────────────────────────────────────────
         if ext == ".dxf":
             parsed     = parse_dxf(tmp_path)
             session_id = str(uuid.uuid4())
@@ -449,7 +355,6 @@ async def upload_drawing(file: UploadFile = File(...)):
             response["file_type"] = "dxf"
             return JSONResponse(response)
 
-        # ── PDF branch ────────────────────────────────────────────────────
         else:
             print(f"\n[UPLOAD-DRAWING] PDF {file.filename}")
             result = await asyncio.wait_for(
@@ -469,7 +374,7 @@ async def upload_drawing(file: UploadFile = File(...)):
 
 
 # -------------------------------------------------------------
-# ANALYZE DXF  (re-analyze from an existing session)
+# ANALYZE DXF
 # -------------------------------------------------------------
 
 @app.post("/analyze")
@@ -509,15 +414,8 @@ async def analyze_dxf(body: AnalyzeRequest):
 
 @app.post("/nest")
 async def run_nesting(body: NestRequest):
-    """
-    True-shape nesting using the Bottom-Left placement algorithm.
-
-    Accepts a list of polygon parts with quantities and a stock sheet size.
-    Returns placement coordinates, sheet count, utilization, and waste.
-    """
     if not body.parts:
         raise HTTPException(status_code=400, detail="No parts provided.")
-
     if body.stock.width <= 0 or body.stock.height <= 0:
         raise HTTPException(status_code=400, detail="Stock sheet dimensions must be positive.")
 
@@ -542,11 +440,7 @@ async def run_nesting(body: NestRequest):
                 area     = p.area,
             ))
 
-        sheet  = StockSheet(
-            width     = body.stock.width,
-            height    = body.stock.height,
-            thickness = body.stock.thickness,
-        )
+        sheet  = StockSheet(width=body.stock.width, height=body.stock.height, thickness=body.stock.thickness)
         config = NestingConfig(
             step_x    = max(body.step_x, 0.01),
             step_y    = max(body.step_y, 0.01),
@@ -567,7 +461,7 @@ async def run_nesting(body: NestRequest):
         return result
 
     except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="Nesting timed out (120 s limit). Try reducing part quantity or increasing step size.")
+        raise HTTPException(status_code=504, detail="Nesting timed out (120 s limit).")
     except HTTPException:
         raise
     except Exception as exc:
@@ -575,7 +469,7 @@ async def run_nesting(body: NestRequest):
 
 
 # -------------------------------------------------------------
-# DEBUG: snapped edges used for polygonization
+# DEBUG
 # -------------------------------------------------------------
 
 @app.get("/debug/edges")
