@@ -5,6 +5,8 @@ export default function TopBar({
   fileName, onFileUpload, onFitScreen, isLoading,
   leftPanelOpen, onToggleLeft,
   sidebarOpen, onToggleSidebar,
+  // Auth & modals
+  authUser, onOpenAdmin, onOpenLogin, onLogout, onOpenQuote,
 }) {
   const fileInputRef = useRef(null);
 
@@ -16,7 +18,7 @@ export default function TopBar({
     const files = Array.from(e.target.files ?? []);
     if (files.length > 0) {
       onFileUpload(files);
-      e.target.value = ''; // reset input so the same file can be re-selected
+      e.target.value = '';
     }
   };
 
@@ -26,12 +28,13 @@ export default function TopBar({
     if (files.length > 0) onFileUpload(files);
   };
 
-  // ── Quote handler (Phase 1 placeholder) ──────────────────────────────────
-  // Phase 2: replace body with openQuoteModal({ geometry, analysisResult })
-  const handleAddQuote = () => {
-    // Future hook: pass geometry + analysis data to costing engine
-    // openQuoteModal({ geometry, analysisResult, fileName });
-    alert('Quote workflow will be implemented in next phase');
+  // Admin button: if logged in as admin → open panel; else → open login
+  const handleAdminClick = () => {
+    if (authUser?.role === 'admin') {
+      onOpenAdmin();
+    } else {
+      onOpenLogin();
+    }
   };
 
   return (
@@ -50,8 +53,7 @@ export default function TopBar({
       {/* Toolbar Actions */}
       <div className="topbar-actions">
 
-        {/* Panel toggles — hidden on desktop (≥992px), visible on tablet/mobile */}
-        {/* Sidebar toggle — always visible on desktop */}
+        {/* Sidebar toggle */}
         <button
           className={`btn-sidebar-toggle${sidebarOpen ? '' : ' active'}`}
           onClick={onToggleSidebar}
@@ -100,10 +102,11 @@ export default function TopBar({
           )}
         </button>
 
+        {/* Add Quote button */}
         <button
           className="btn-quote"
-          onClick={handleAddQuote}
-          title="Add Quote for this DXF part"
+          onClick={onOpenQuote}
+          title="Generate quotation for loaded parts"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
@@ -111,6 +114,35 @@ export default function TopBar({
           </svg>
           <span className="btn-label">Add Quote</span>
         </button>
+
+        {/* Admin Panel button */}
+        <button
+          className={`btn-admin${authUser?.role === 'admin' ? ' btn-admin--active' : ''}`}
+          onClick={handleAdminClick}
+          title={authUser?.role === 'admin' ? 'Admin Panel' : 'Admin Login'}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="8" r="4"/>
+            <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+          </svg>
+          <span className="btn-label">
+            {authUser?.role === 'admin' ? 'Admin' : 'Admin'}
+          </span>
+        </button>
+
+        {/* Logout button — only shown when logged in */}
+        {authUser && (
+          <button
+            className="btn-logout"
+            onClick={onLogout}
+            title={`Logout (${authUser.username})`}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
+            </svg>
+            <span className="btn-label-sm">{authUser.username}</span>
+          </button>
+        )}
 
         {fileName && (
           <button

@@ -1,26 +1,17 @@
-import { useState, useCallback, useRef, useMemo } from 'react';
-import TopBar from './components/TopBar';
-import LeftPanel from './components/LeftPanel';
-import DXFViewer from './components/DXFViewer';
-import StatusBar from './components/StatusBar';
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import TopBar      from './components/TopBar';
+import LeftPanel   from './components/LeftPanel';
+import DXFViewer   from './components/DXFViewer';
+import StatusBar   from './components/StatusBar';
 import SummaryTable from './components/SummaryTable';
+import LoginModal  from './components/LoginModal';
+import AdminPanel  from './components/AdminPanel';
+import QuoteModal  from './components/QuoteModal';
 import './App.css';
 
 // -------------------------------------------------------------
 // POLYGON EXTRACTION
 // Build the outer polygon from the full geometry bounding box.
-//
-// Why bbox instead of the largest closed polygon?
-// DXF part outlines are often drawn with open LINE/ARC entities
-// (not closed polylines), so "largest closed polygon" would
-// pick a hole circle, giving a tiny pw/ph.  The nesting engine
-// spaces copies pw apart, but the THREE.js renderer draws the
-// full DXF (including the large open-path outline) for each copy.
-// Result: copies overlap and appear nested inside one another.
-//
-// Using the full-geometry bbox as outer guarantees pw/ph equal
-// the exact rendered width/height (Box3.setFromObject), so every
-// placed copy is spaced correctly and appears side-by-side.
 // -------------------------------------------------------------
 function extractPolygons(geometry) {
   if (!Array.isArray(geometry)) return { outer: [], holes: [] };
@@ -45,12 +36,33 @@ function extractPolygons(geometry) {
 }
 
 // Supported file extensions
-const IMAGE_EXTS    = new Set(['jpg', 'jpeg', 'png']);
-const BACKEND_EXTS  = new Set(['dxf', 'pdf']);
+const IMAGE_EXTS     = new Set(['jpg', 'jpeg', 'png']);
+const BACKEND_EXTS   = new Set(['dxf', 'pdf']);
 const SUPPORTED_EXTS = new Set([...IMAGE_EXTS, ...BACKEND_EXTS]);
 
 function fileExt(file) {
   return file?.name?.split('.').pop().toLowerCase() ?? '';
+}
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+
+// -------------------------------------------------------------
+// AUTH HELPERS  (localStorage)
+// -------------------------------------------------------------
+const AUTH_KEY = 'tv_auth';
+
+function loadAuth() {
+  try {
+    const raw = localStorage.getItem(AUTH_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveAuth(data) {
+  if (data) localStorage.setItem(AUTH_KEY, JSON.stringify(data));
+  else localStorage.removeItem(AUTH_KEY);
 }
 
 // -------------------------------------------------------------
@@ -89,6 +101,37 @@ export default function App() {
   // Multi-format viewer state
   const [activeFileType, setActiveFileType] = useState('dxf');
 
+  // ── Auth state ──────────────────────────────────────────────
+  const [authUser, setAuthUser] = useState(loadAuth);
+
+  // ── Modal state ─────────────────────────────────────────────
+  const [showLogin, setShowLogin]     = useState(false);
+  const [showAdmin, setShowAdmin]     = useState(false);
+  const [showQuote, setShowQuote]     = useState(false);
+
+  // Persist auth on change
+  useEffect(() => { saveAuth(authUser); }, [authUser]);
+
+  const handleLogin = useCallback((data) => {
+    setAuthUser(data);
+    setShowLogin(false);
+    // If the user logged in via "Admin" button, open the panel
+    setShowAdmin(true);
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    if (authUser?.token) {
+      try {
+        await fetch(`${API_BASE}/auth/logout`, {
+          method:  'POST',
+          headers: { 'Authorization': `Bearer ${authUser.token}` },
+        });
+      } catch { /* ignore */ }
+    }
+    setAuthUser(null);
+    setShowAdmin(false);
+  }, [authUser]);
+
   const closeAllPanels   = useCallback(() => setLeftPanelOpen(false), []);
   const handleToggleLeft = useCallback(() => setLeftPanelOpen(v => !v), []);
 
@@ -97,7 +140,7 @@ export default function App() {
   // -------------------------------------------------------
   const handleFileUpload = useCallback(async (filesInput) => {
 
-    const allFiles = Array.isArray(filesInput) ? filesInput : [filesInput];
+    const allFiles   = Array.isArray(filesInput) ? filesInput : [filesInput];
     const validFiles = allFiles.filter(f => SUPPORTED_EXTS.has(fileExt(f)));
 
     if (validFiles.length === 0) {
@@ -116,7 +159,6 @@ export default function App() {
     setLeftPanelOpen(false);
     setViewMode('original');
 
-    // ── Image files: handled entirely on the frontend ──────────────────────
     const imageFiles   = toProcess.filter(f => IMAGE_EXTS.has(fileExt(f)));
     const backendFiles = toProcess.filter(f => BACKEND_EXTS.has(fileExt(f)));
 
@@ -149,12 +191,11 @@ export default function App() {
 
     if (backendFiles.length === 0) return;
 
-    // ── Backend files: DXF and PDF need the Python engine ─────────────────
     setIsLoading(true);
     setAnalysisResult(null);
     setViewerStatus('Connecting to Python engine...');
 
-    const PRIMARY  = import.meta.env.VITE_API_BASE_URL     ?? 'http://localhost:8000';
+    const PRIMARY  = API_BASE;
     const FALLBACK = import.meta.env.VITE_API_FALLBACK_URL ?? 'http://localhost:8000';
 
     const tryPing = async (base) => {
@@ -167,16 +208,16 @@ export default function App() {
       finally  { clearTimeout(t); }
     };
 
-    let API_BASE = null;
-    if (await tryPing(PRIMARY))       API_BASE = PRIMARY;
-    else if (await tryPing(FALLBACK)) API_BASE = FALLBACK;
+    let resolvedBase = null;
+    if (await tryPing(PRIMARY))       resolvedBase = PRIMARY;
+    else if (await tryPing(FALLBACK)) resolvedBase = FALLBACK;
     else {
       setError('Cannot reach backend. Ensure Python server is running.');
       setViewerStatus('Error loading file');
       setIsLoading(false);
       return;
     }
-    apiBaseRef.current = API_BASE;
+    apiBaseRef.current = resolvedBase;
 
     let lastDxfResult = null;
     let lastFile      = null;
@@ -197,7 +238,7 @@ export default function App() {
         const formData = new FormData();
         formData.append('file', file);
 
-        const response = await fetch(`${API_BASE}/upload-drawing`, {
+        const response = await fetch(`${resolvedBase}/upload-drawing`, {
           method: 'POST',
           body:   formData,
           signal: controller.signal,
@@ -372,14 +413,13 @@ export default function App() {
   const handleRunNesting = useCallback(async () => {
     if (rows.length === 0 || isNesting) return;
 
-    const API_BASE = apiBaseRef.current ?? import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+    const base = apiBaseRef.current ?? API_BASE;
 
     setIsNesting(true);
     setNestingResult(null);
     setNestingError(null);
 
     try {
-      // Only DXF rows contribute geometry for nesting; PDF/image rows are silently skipped
       const nestParts = rows
         .map(row => {
           const { outer, holes } = extractPolygons(row.geometry);
@@ -395,7 +435,6 @@ export default function App() {
         .filter(Boolean);
 
       if (nestParts.length === 0) {
-        console.warn('[NESTING] No valid polygons found in uploaded parts.');
         setIsNesting(false);
         return;
       }
@@ -410,22 +449,15 @@ export default function App() {
         edge_gap:  stock.edge_gap ?? 0,
       };
 
-      const res = await fetch(`${API_BASE}/nest`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(body),
-      });
-
+      const res    = await fetch(`${base}/nest`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const result = await res.json();
       if (!res.ok) throw new Error(result.detail || 'Nesting request failed');
 
-      console.log('[NESTING] Placements:', result.placements);
       setNestingResult(result);
       setNestingError(null);
       setViewMode('nesting');
 
     } catch (err) {
-      console.error('[NESTING] Failed:', err);
       setNestingError(err.message || 'Nesting failed. Try reducing quantity or increasing sheet size.');
     } finally {
       setIsNesting(false);
@@ -441,7 +473,7 @@ export default function App() {
     const targetRows = rows.filter(r => selectedParts.includes(r.id));
     if (targetRows.length === 0) return;
 
-    const API_BASE = apiBaseRef.current ?? import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+    const base = apiBaseRef.current ?? API_BASE;
 
     setIsNesting(true);
     setNestingResult(null);
@@ -463,7 +495,6 @@ export default function App() {
         .filter(Boolean);
 
       if (nestParts.length === 0) {
-        console.warn('[NESTING] No valid polygons found in selected parts.');
         setIsNesting(false);
         return;
       }
@@ -478,22 +509,15 @@ export default function App() {
         edge_gap:  stock.edge_gap ?? 0,
       };
 
-      const res = await fetch(`${API_BASE}/nest`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(body),
-      });
-
+      const res    = await fetch(`${base}/nest`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const result = await res.json();
       if (!res.ok) throw new Error(result.detail || 'Nesting request failed');
 
-      console.log('[NESTING] Selected placements:', result.placements);
       setNestingResult(result);
       setNestingError(null);
       setViewMode('nesting');
 
     } catch (err) {
-      console.error('[NESTING] Failed:', err);
       setNestingError(err.message || 'Nesting failed. Try reducing quantity or increasing sheet size.');
     } finally {
       setIsNesting(false);
@@ -516,6 +540,12 @@ export default function App() {
         onToggleLeft={handleToggleLeft}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen(v => !v)}
+        // Auth + modals
+        authUser={authUser}
+        onOpenAdmin={() => setShowAdmin(true)}
+        onOpenLogin={() => setShowLogin(true)}
+        onLogout={handleLogout}
+        onOpenQuote={() => setShowQuote(true)}
       />
 
       <div
@@ -578,6 +608,32 @@ export default function App() {
       />
 
       <StatusBar status={viewerStatus} fileName={uploadedFile?.name} />
+
+      {/* ── Modals ── */}
+
+      {showLogin && (
+        <LoginModal
+          apiBase={API_BASE}
+          onLogin={handleLogin}
+          onClose={() => setShowLogin(false)}
+        />
+      )}
+
+      {showAdmin && authUser?.role === 'admin' && (
+        <AdminPanel
+          apiBase={API_BASE}
+          token={authUser.token}
+          onClose={() => setShowAdmin(false)}
+        />
+      )}
+
+      {showQuote && (
+        <QuoteModal
+          apiBase={API_BASE}
+          rows={rows}
+          onClose={() => setShowQuote(false)}
+        />
+      )}
 
     </div>
   );

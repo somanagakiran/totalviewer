@@ -1,12 +1,15 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 import tempfile
 import os
 import uuid
 import time
 import asyncio
+import sqlite3
+import hashlib
+import secrets
 from pathlib import Path
 
 from engine.dxf_parser import parse_dxf
@@ -17,16 +20,88 @@ from engine.nesting_engine import PolygonPart, StockSheet, NestingConfig, nest_p
 
 
 # -------------------------------------------------------------
-# IN-MEMORY STORES  (no database required)
+# DATABASE  (SQLite — no external server required)
 # -------------------------------------------------------------
 
-parts_memory:    list = []   # placeholder for future feature work
-projects_memory: list = []   # placeholder for future feature work
+DB_PATH   = Path(__file__).parent / "totalviewer.db"
+LOGO_DIR  = Path(__file__).parent / "logos"
+LOGO_DIR.mkdir(exist_ok=True)
+
+
+def _get_db() -> sqlite3.Connection:
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _init_db() -> None:
+    conn = _get_db()
+    cur  = conn.cursor()
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            username      TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role          TEXT DEFAULT 'user'
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS admin_settings (
+            id                     INTEGER PRIMARY KEY DEFAULT 1,
+            company_name           TEXT DEFAULT 'Your Company',
+            address                TEXT DEFAULT '',
+            gst_number             TEXT DEFAULT '',
+            contact_info           TEXT DEFAULT '',
+            logo_filename          TEXT DEFAULT NULL,
+            price_per_kg           REAL DEFAULT 0.0,
+            price_per_hour         REAL DEFAULT 0.0,
+            cutting_cost_per_meter REAL DEFAULT 0.0,
+            minimum_charge         REAL DEFAULT 0.0,
+            tax_percent            REAL DEFAULT 18.0,
+            terms_and_conditions   TEXT DEFAULT 'Standard terms and conditions apply.',
+            bank_details           TEXT DEFAULT '',
+            signature_name         TEXT DEFAULT ''
+        )
+    """)
+
+    # Seed the single settings row
+    cur.execute("INSERT OR IGNORE INTO admin_settings (id) VALUES (1)")
+
+    # Default admin user  (admin / admin123)
+    admin_hash = hashlib.sha256("admin123".encode()).hexdigest()
+    cur.execute(
+        "INSERT OR IGNORE INTO users (username, password_hash, role) VALUES ('admin', ?, 'admin')",
+        (admin_hash,),
+    )
+
+    conn.commit()
+    conn.close()
+
+
+# Active auth tokens  {token: {username, role}}
+_active_tokens: dict = {}
+
+
+def _verify_token(token: str) -> dict | None:
+    return _active_tokens.get(token)
+
+
+def _require_admin(authorization: str | None) -> dict:
+    token = (authorization or "").removeprefix("Bearer ").strip()
+    info  = _verify_token(token)
+    if not info or info.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return info
 
 
 # -------------------------------------------------------------
-# SESSION STORE  (parsed DXF data between /upload -> /analyze)
+# IN-MEMORY STORES  (no database required for DXF sessions)
 # -------------------------------------------------------------
+
+parts_memory:    list = []
+projects_memory: list = []
 
 SESSIONS: dict = {}
 
@@ -41,7 +116,7 @@ class AnalyzeRequest(BaseModel):
 
 class NestPartInput(BaseModel):
     id:       str
-    outer:    list[list[float]]   # [[x, y], ...]
+    outer:    list[list[float]]
     holes:    list[list[list[float]]] = []
     quantity: int   = 1
     area:     float = 0.0
@@ -61,6 +136,11 @@ class NestRequest(BaseModel):
     margin:    float       = 0.0
     rotations: list[float] = [0.0, 90.0]
     edge_gap:  float       = 0.0
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
 
 
 # -------------------------------------------------------------
@@ -133,6 +213,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Initialise database on startup
+_init_db()
+
 
 # -------------------------------------------------------------
 # HEALTH
@@ -154,6 +237,135 @@ def list_sessions():
 
 
 # -------------------------------------------------------------
+# AUTH
+# -------------------------------------------------------------
+
+@app.post("/auth/login")
+def auth_login(body: LoginRequest):
+    pw_hash = hashlib.sha256(body.password.encode()).hexdigest()
+    conn = _get_db()
+    row  = conn.execute(
+        "SELECT username, role FROM users WHERE username=? AND password_hash=?",
+        (body.username, pw_hash),
+    ).fetchone()
+    conn.close()
+
+    if not row:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    token = secrets.token_hex(32)
+    _active_tokens[token] = {"username": row["username"], "role": row["role"]}
+    return {"token": token, "username": row["username"], "role": row["role"]}
+
+
+@app.post("/auth/logout")
+def auth_logout(authorization: str | None = Header(default=None)):
+    token = (authorization or "").removeprefix("Bearer ").strip()
+    _active_tokens.pop(token, None)
+    return {"ok": True}
+
+
+# -------------------------------------------------------------
+# ADMIN SETTINGS
+# -------------------------------------------------------------
+
+@app.get("/admin/settings")
+def get_admin_settings():
+    """Public read — used by Add Quote to fetch pricing + company info."""
+    conn = _get_db()
+    row  = conn.execute("SELECT * FROM admin_settings WHERE id=1").fetchone()
+    conn.close()
+    if not row:
+        return {}
+    data = dict(row)
+    # Replace raw filename with a usable URL
+    data["logo_url"] = "/admin/logo" if data.get("logo_filename") else None
+    data.pop("logo_filename", None)
+    return data
+
+
+@app.put("/admin/settings")
+async def update_admin_settings(
+    request:       Request,
+    authorization: str | None = Header(default=None),
+):
+    """Admin-only: update settings."""
+    _require_admin(authorization)
+    body = await request.json()
+
+    allowed_fields = {
+        "company_name", "address", "gst_number", "contact_info",
+        "price_per_kg", "price_per_hour", "cutting_cost_per_meter",
+        "minimum_charge", "tax_percent",
+        "terms_and_conditions", "bank_details", "signature_name",
+    }
+    updates = {k: v for k, v in body.items() if k in allowed_fields}
+    if not updates:
+        return {"ok": True}
+
+    set_clause = ", ".join(f"{k}=?" for k in updates)
+    conn = _get_db()
+    conn.execute(
+        f"UPDATE admin_settings SET {set_clause} WHERE id=1",
+        list(updates.values()),
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@app.post("/admin/logo")
+async def upload_logo(
+    file:          UploadFile = File(...),
+    authorization: str | None = Header(default=None),
+):
+    """Admin-only: upload company logo."""
+    _require_admin(authorization)
+
+    ext = Path(file.filename).suffix.lower()
+    if ext not in {".jpg", ".jpeg", ".png", ".svg", ".webp"}:
+        raise HTTPException(status_code=400, detail="Logo must be jpg/png/svg/webp")
+
+    logo_path = LOGO_DIR / f"company_logo{ext}"
+    # Remove old logos with different extension
+    for old in LOGO_DIR.glob("company_logo.*"):
+        old.unlink(missing_ok=True)
+
+    content = await file.read()
+    logo_path.write_bytes(content)
+
+    conn = _get_db()
+    conn.execute("UPDATE admin_settings SET logo_filename=? WHERE id=1", (str(logo_path),))
+    conn.commit()
+    conn.close()
+
+    return {"ok": True, "logo_url": "/admin/logo"}
+
+
+@app.get("/admin/logo")
+def get_logo():
+    """Serve the company logo."""
+    conn = _get_db()
+    row  = conn.execute("SELECT logo_filename FROM admin_settings WHERE id=1").fetchone()
+    conn.close()
+
+    if not row or not row["logo_filename"]:
+        raise HTTPException(status_code=404, detail="No logo uploaded")
+
+    logo_path = Path(row["logo_filename"])
+    if not logo_path.exists():
+        raise HTTPException(status_code=404, detail="Logo file not found")
+
+    media_types = {
+        ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".png": "image/png",  ".svg": "image/svg+xml",
+        ".webp": "image/webp",
+    }
+    media_type = media_types.get(logo_path.suffix.lower(), "image/png")
+    return FileResponse(str(logo_path), media_type=media_type)
+
+
+# -------------------------------------------------------------
 # UPLOAD DXF
 # -------------------------------------------------------------
 
@@ -169,7 +381,7 @@ async def upload_dxf(file: UploadFile = File(...)):
             tmp.write(await file.read())
             tmp_path = tmp.name
 
-        parsed = parse_dxf(tmp_path)
+        parsed     = parse_dxf(tmp_path)
         session_id = str(uuid.uuid4())
 
         SESSIONS[session_id] = {
@@ -213,14 +425,14 @@ async def upload_drawing(file: UploadFile = File(...)):
 
     tmp_path = None
     try:
-        suffix = ext  # keep original extension so parsers detect format correctly
+        suffix = ext
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(await file.read())
             tmp_path = tmp.name
 
         # ── DXF branch ────────────────────────────────────────────────────
         if ext == ".dxf":
-            parsed = parse_dxf(tmp_path)
+            parsed     = parse_dxf(tmp_path)
             session_id = str(uuid.uuid4())
 
             SESSIONS[session_id] = {
@@ -310,7 +522,6 @@ async def run_nesting(body: NestRequest):
         raise HTTPException(status_code=400, detail="Stock sheet dimensions must be positive.")
 
     try:
-        # Convert request models -> nesting engine objects
         parts = []
         for p in body.parts:
             if len(p.outer) < 3:
@@ -344,7 +555,6 @@ async def run_nesting(body: NestRequest):
             edge_gap  = max(body.edge_gap, 0.0),
         )
 
-        # Run in a thread - nesting is CPU-bound
         result = await asyncio.wait_for(
             asyncio.to_thread(nest_parts, parts, sheet, config),
             timeout=120.0,

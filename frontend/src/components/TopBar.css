@@ -110,6 +110,70 @@
   background: #2ea043;
 }
 
+/* Admin Panel button */
+.btn-admin {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.btn-admin:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: #f0883e;
+}
+
+.btn-admin--active {
+  background: rgba(240, 136, 62, 0.12);
+  border-color: rgba(240, 136, 62, 0.45);
+  color: #f0883e;
+}
+
+.btn-admin--active:hover {
+  background: rgba(240, 136, 62, 0.2);
+  color: #f0883e;
+}
+
+/* Logout pill */
+.btn-logout {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: transparent;
+  border: 1px solid var(--border-primary);
+  border-radius: 20px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.btn-logout:hover {
+  background: rgba(248, 81, 73, 0.1);
+  border-color: rgba(248, 81, 73, 0.4);
+  color: #f85149;
+}
+
+.btn-label-sm {
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .btn-icon {
   display: flex;
   align-items: center;
@@ -242,8 +306,10 @@
   .brand-tag      { display: none; }
   .topbar-filename { display: none; } /* filename lives in status bar on mobile */
   .btn-upload,
-  .btn-quote      { padding: 6px 10px; font-size: 12px; gap: 5px; }
+  .btn-quote,
+  .btn-admin      { padding: 6px 10px; font-size: 12px; gap: 5px; }
   .topbar-actions { margin-left: 8px; gap: 6px; }
+  .btn-logout     { display: none; }
 }
 
 /* Small mobile (≤480px): hide brand name text to free space */
@@ -256,7 +322,8 @@
 @media (max-width: 380px) {
   .btn-label      { display: none; }
   .btn-upload,
-  .btn-quote      { padding: 6px 8px; gap: 0; }
+  .btn-quote,
+  .btn-admin      { padding: 6px 8px; gap: 0; }
 }
 
 /* Spinner */
