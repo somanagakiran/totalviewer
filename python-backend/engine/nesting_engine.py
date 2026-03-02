@@ -90,7 +90,7 @@ class NestingConfig:
     step_x:        float       = 5.0
     step_y:        float       = 5.0
     margin:        float       = 0.0
-    rotations:     list[float] = field(default_factory=lambda: [0.0, 90.0])
+    rotations:     list[float] = field(default_factory=lambda: [0.0, 90.0, 180.0, 270.0])
     advanced_mode: bool        = False
     rotation_step: float       = 10.0
     n_passes:      int         = 5

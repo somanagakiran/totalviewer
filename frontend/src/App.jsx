@@ -95,10 +95,14 @@ export default function App() {
       return;
     }
 
-    let toProcess = validFiles;
-    if (validFiles.length > 5) {
-      alert('Maximum 5 files per upload. Only the first 5 will be processed.');
-      toProcess = validFiles.slice(0, 5);
+    const remaining = Math.max(0, 5 - rows.length);
+    if (remaining === 0) {
+      setError('Maximum 5 parts loaded. Remove parts before importing more.');
+      return;
+    }
+    let toProcess = validFiles.slice(0, remaining);
+    if (validFiles.length > remaining) {
+      alert(`Maximum 5 parts total. Only ${remaining} more can be added — extra files skipped.`);
     }
 
     setError(null);
@@ -114,7 +118,7 @@ export default function App() {
       rowCounterRef.current += 1;
       const rowId = rowCounterRef.current;
       setRows(prev => [...prev, {
-        id: rowId, partName: `p${rowId}`, fileName: file.name, fileSize: file.size,
+        id: rowId, partName: `p${prev.length + 1}`, fileName: file.name, fileSize: file.size,
         fileType: 'image', imageUrl, pdfData: null,
         material: 'N/A', qty: 1, holes: 0, ep: 0, ip: 0,
         geometry: null, analysisResult: null,
@@ -183,7 +187,7 @@ export default function App() {
           const ip     = part?.internal_perimeter ?? data.internal_perimeter ?? 0;
 
           setRows(prev => [...prev, {
-            id: rowId, partName: `p${rowId}`, fileName: file.name, fileSize: file.size,
+            id: rowId, partName: `p${prev.length + 1}`, fileName: file.name, fileSize: file.size,
             fileType: 'dxf', imageUrl: null, pdfData: null,
             material: 'MS', qty: 1, holes: data.holes ?? 0,
             ep, ip, geometry: data.geometry, analysisResult: result,
@@ -202,7 +206,7 @@ export default function App() {
             width: data.width, height: data.height,
           };
           setRows(prev => [...prev, {
-            id: rowId, partName: `p${rowId}`, fileName: file.name, fileSize: file.size,
+            id: rowId, partName: `p${prev.length + 1}`, fileName: file.name, fileSize: file.size,
             fileType: 'pdf', imageUrl: null, pdfData,
             material: 'N/A', qty: 1, holes: 0, ep: 0, ip: 0,
             geometry: null, analysisResult: null,
@@ -240,7 +244,7 @@ export default function App() {
 
     setIsLoading(false);
 
-  }, []);
+  }, [rows]);
 
   // -------------------------------------------------------
   // ROW MANAGEMENT
@@ -279,6 +283,20 @@ export default function App() {
     setSelectedParts(prev => prev.filter(id => id !== partId));
   }, [rows]);
 
+  const handleClearAll = useCallback(() => {
+    rows.forEach(row => { if (row?.imageUrl) URL.revokeObjectURL(row.imageUrl); });
+    setRows([]);
+    setGeometryParts([]);
+    setSelectedRowId(null);
+    setSelectedParts([]);
+    setNestingResult(null);
+    setNestingError(null);
+    setAnalysisResult(null);
+    setUploadedFile(null);
+    setViewerStatus('Ready');
+    setViewMode('original');
+  }, [rows]);
+
   const handleFitScreen = useCallback(() => {
     window.dispatchEvent(new CustomEvent('dxf-fit-screen'));
   }, []);
@@ -303,7 +321,7 @@ export default function App() {
       })
       .filter(Boolean);
 
-  const _runNest = useCallback(async (nestParts, rotations = [0.0, 90.0]) => {
+  const _runNest = useCallback(async (nestParts, rotations = [0.0, 90.0, 180.0, 270.0]) => {
     const base = apiBaseRef.current ?? API_BASE;
     const body = {
       parts: nestParts,
@@ -423,6 +441,7 @@ export default function App() {
         selectedRowId={selectedRowId}
         onSelectRow={handleSelectRow}
         onRemoveRow={handleRemovePart}
+        onClearAll={handleClearAll}
         partsOpen={partsOpen}
         onToggleTable={() => setPartsOpen(v => !v)}
         stock={stock}

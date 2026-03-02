@@ -35,6 +35,26 @@
   color: var(--text-secondary, #8b949e);
 }
 
+.st-clear-all-btn {
+  margin-left: auto;
+  margin-right: 6px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 500;
+  background: none;
+  border: 1px solid var(--border, #30363d);
+  border-radius: 4px;
+  color: var(--text-secondary, #8b949e);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.st-clear-all-btn:hover {
+  background: rgba(248, 81, 73, 0.1);
+  border-color: #f85149;
+  color: #f85149;
+}
+
 .st-toggle-btn {
   display: flex;
   align-items: center;

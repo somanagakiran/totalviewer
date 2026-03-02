@@ -7,6 +7,7 @@ export default function SummaryTable({
   selectedRowId,
   onSelectRow,
   onRemoveRow,
+  onClearAll,
   partsOpen,
   onToggleTable,
   stock,
@@ -43,6 +44,14 @@ export default function SummaryTable({
           Parts List
           <span className="st-header-count">{rows.length}</span>
         </span>
+        <button
+          className="st-clear-all-btn"
+          onClick={() => onClearAll?.()}
+          title="Remove all parts"
+          aria-label="Clear all parts"
+        >
+          Clear All
+        </button>
         <button
           className="st-toggle-btn"
           onClick={onToggleTable}
