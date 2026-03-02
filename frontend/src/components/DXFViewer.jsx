@@ -545,7 +545,7 @@ export default function DXFViewer({
         console.error('[Viewer] Render error:', err);
         onStatusChange?.('Render error: ' + err.message);
       }
-    }, 10);
+    }, 50);
 
     return () => clearTimeout(tid);
   }, [viewMode, parts, selectedRowId, nestedSheets, fileType, pdfData, imageUrl]); // eslint-disable-line react-hooks/exhaustive-deps

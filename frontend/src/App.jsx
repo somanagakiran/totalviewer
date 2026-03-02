@@ -95,14 +95,14 @@ export default function App() {
       return;
     }
 
-    const remaining = Math.max(0, 5 - rows.length);
+    const remaining = Math.max(0, 10 - rows.length);
     if (remaining === 0) {
-      setError('Maximum 5 parts loaded. Remove parts before importing more.');
+      setError('Maximum 10 parts loaded. Remove parts before importing more.');
       return;
     }
     let toProcess = validFiles.slice(0, remaining);
     if (validFiles.length > remaining) {
-      alert(`Maximum 5 parts total. Only ${remaining} more can be added — extra files skipped.`);
+      alert(`Maximum 10 parts total. Only ${remaining} more can be added — extra files skipped.`);
     }
 
     setError(null);
@@ -155,86 +155,107 @@ export default function App() {
     }
     apiBaseRef.current = resolvedBase;
 
-    let lastDxfResult = null, lastFile = null, processed = 0;
+    // ── Upload all backend files in parallel ────────────────────────────
+    // Promise.allSettled ensures one failure never blocks the others.
+    // A shared counter lets us update the status bar as each response arrives.
+    let doneCount = 0;
+    setViewerStatus(
+      backendFiles.length === 1
+        ? `Uploading ${backendFiles[0].name}…`
+        : `Uploading ${backendFiles.length} files…`
+    );
 
-    for (const file of backendFiles) {
-      const ext = fileExt(file);
+    const uploadOne = async (file) => {
+      const ctrl  = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 30000);
+      const fd    = new FormData();
+      fd.append('file', file);
       try {
-        setViewerStatus(
-          backendFiles.length > 1
-            ? `Uploading ${file.name} (${processed + 1}/${backendFiles.length})…`
-            : 'Uploading to Python engine…'
-        );
-        setUploadedFile(file);
-
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 30000);
-        const fd    = new FormData();
-        fd.append('file', file);
-
         const res  = await fetch(`${resolvedBase}/upload-drawing`, { method: 'POST', body: fd, signal: ctrl.signal });
         clearTimeout(timer);
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Upload failed');
-
-        rowCounterRef.current += 1;
-        const rowId = rowCounterRef.current;
-
-        if (ext === 'dxf') {
-          const result = { ...data, entityCount: data.entities, boundingBox: data.bounding_box };
-          const part   = data.parts?.[0];
-          const ep     = part?.external_perimeter ?? data.external_perimeter ?? data.perimeter ?? 0;
-          const ip     = part?.internal_perimeter ?? data.internal_perimeter ?? 0;
-
-          setRows(prev => [...prev, {
-            id: rowId, partName: `p${prev.length + 1}`, fileName: file.name, fileSize: file.size,
-            fileType: 'dxf', imageUrl: null, pdfData: null,
-            material: 'MS', qty: 1, holes: data.holes ?? 0,
-            ep, ip, geometry: data.geometry, analysisResult: result,
-          }]);
-          setSelectedRowId(rowId);
-          setGeometryParts(prev => [...prev, { id: rowId, geometry: data.geometry }]);
-          setActiveFileType('dxf');
-          lastDxfResult = result;
-          lastFile      = file;
-
-        } else if (ext === 'pdf') {
-          const pdfData = {
-            page_image_b64: data.page_image_b64,
-            vector_lines:   data.vector_lines ?? [],
-            extracted_dimensions: data.extracted_dimensions ?? [],
-            width: data.width, height: data.height,
-          };
-          setRows(prev => [...prev, {
-            id: rowId, partName: `p${prev.length + 1}`, fileName: file.name, fileSize: file.size,
-            fileType: 'pdf', imageUrl: null, pdfData,
-            material: 'N/A', qty: 1, holes: 0, ep: 0, ip: 0,
-            geometry: null, analysisResult: null,
-          }]);
-          setSelectedRowId(rowId);
-          setGeometryParts([]);
-          setActiveFileType('pdf');
-          setViewerStatus(
-            `Loaded - ${file.name}` +
-            (pdfData.extracted_dimensions.length > 0 ? ` (${pdfData.extracted_dimensions.length} dimensions found)` : '')
-          );
-          lastFile = file;
-        }
-
-        processed++;
-
+        doneCount++;
+        if (backendFiles.length > 1) setViewerStatus(`Uploaded ${doneCount}/${backendFiles.length}…`);
+        return { file, data };
       } catch (err) {
-        const msg = err?.name === 'AbortError'
-          ? `Timed out: ${file.name}. Please try again.`
-          : (err?.message || `Upload failed: ${file.name}`);
-        setError(msg);
-        setViewerStatus('Error loading file');
+        clearTimeout(timer);
+        throw err;
+      }
+    };
+
+    const outcomes = await Promise.allSettled(backendFiles.map(uploadOne));
+
+    // ── Collect results — no state updates yet ──────────────────────────
+    const newRows     = [];
+    const newGeoParts = [];
+    const uploadErrors = [];
+    let lastDxfResult = null, lastFile = null;
+
+    for (const outcome of outcomes) {
+      if (outcome.status === 'rejected') {
+        const err = outcome.reason;
+        uploadErrors.push(
+          err?.name === 'AbortError'
+            ? 'A file timed out. Please try again.'
+            : (err?.message || 'Upload failed')
+        );
+        continue;
+      }
+
+      const { file, data } = outcome.value;
+      const ext = fileExt(file);
+      rowCounterRef.current += 1;
+      const rowId = rowCounterRef.current;
+
+      if (ext === 'dxf') {
+        const result = { ...data, entityCount: data.entities, boundingBox: data.bounding_box };
+        const part   = data.parts?.[0];
+        const ep     = part?.external_perimeter ?? data.external_perimeter ?? data.perimeter ?? 0;
+        const ip     = part?.internal_perimeter ?? data.internal_perimeter ?? 0;
+        newRows.push({ id: rowId, fileName: file.name, fileSize: file.size,
+          fileType: 'dxf', imageUrl: null, pdfData: null,
+          material: 'MS', qty: 1, holes: data.holes ?? 0,
+          ep, ip, geometry: data.geometry, analysisResult: result });
+        newGeoParts.push({ id: rowId, geometry: data.geometry });
+        lastDxfResult = result;
+        lastFile      = file;
+
+      } else if (ext === 'pdf') {
+        const pdfData = {
+          page_image_b64: data.page_image_b64,
+          vector_lines:   data.vector_lines ?? [],
+          extracted_dimensions: data.extracted_dimensions ?? [],
+          width: data.width, height: data.height,
+        };
+        newRows.push({ id: rowId, fileName: file.name, fileSize: file.size,
+          fileType: 'pdf', imageUrl: null, pdfData,
+          material: 'N/A', qty: 1, holes: 0, ep: 0, ip: 0,
+          geometry: null, analysisResult: null });
+        lastFile = file;
       }
     }
+
+    // ── Single batched state update — DXFViewer re-renders exactly once ──
+    if (newRows.length > 0) {
+      const lastRow = newRows[newRows.length - 1];
+      setRows(prev => {
+        const base = prev.length;
+        return [...prev, ...newRows.map((r, i) => ({ ...r, partName: `p${base + i + 1}` }))];
+      });
+      setSelectedRowId(lastRow.id);
+      setActiveFileType(lastRow.fileType ?? 'dxf');
+      if (newGeoParts.length > 0) {
+        setGeometryParts(prev => [...prev, ...newGeoParts]);
+      }
+    }
+
+    if (uploadErrors.length > 0) setError(uploadErrors[uploadErrors.length - 1]);
 
     if (lastDxfResult) {
       setAnalysisResult(lastDxfResult);
       setUploadedFile(lastFile);
+      const processed = newRows.filter(r => r.fileType === 'dxf').length;
       setViewerStatus(
         processed > 1
           ? `Loaded ${processed} files`
