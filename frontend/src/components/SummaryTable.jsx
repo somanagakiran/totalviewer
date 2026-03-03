@@ -75,10 +75,10 @@ export default function SummaryTable({
             <col className="col-partname" />
             <col className="col-filename" />
             <col className="col-material" />
+            <col className="col-num" />
+            <col className="col-num" />
+            <col className="col-num" />
             <col className="col-qty" />
-            <col className="col-num" />
-            <col className="col-num" />
-            <col className="col-num" />
             <col className="col-num" />
             <col className="col-remove" />
           </colgroup>
@@ -87,11 +87,11 @@ export default function SummaryTable({
               <th>Part Name</th>
               <th>File Name</th>
               <th>Material</th>
-              <th className="st-num">Qty</th>
+              <th className="st-num">Ext. Peri</th>
+              <th className="st-num">Int. Peri</th>
               <th className="st-num">Holes</th>
-              <th className="st-num">EP</th>
-              <th className="st-num">IP</th>
-              <th className="st-num">Total</th>
+              <th className="st-num">Qty</th>
+              <th className="st-num">Total Peri</th>
               <th />
             </tr>
           </thead>
@@ -134,6 +134,9 @@ export default function SummaryTable({
                       <option value="SS">SS</option>
                     </select>
                   </td>
+                  <td className="st-num">{row.ep.toFixed(2)}</td>
+                  <td className="st-num">{row.ip.toFixed(2)}</td>
+                  <td className="st-num">{row.holes}</td>
                   <td className="st-num" onClick={e => e.stopPropagation()}>
                     <input
                       className="st-qty-input"
@@ -144,9 +147,6 @@ export default function SummaryTable({
                       onChange={e => onUpdateRow(row.id, 'qty', Math.max(1, parseInt(e.target.value, 10) || 1))}
                     />
                   </td>
-                  <td className="st-num">{row.holes}</td>
-                  <td className="st-num">{row.ep.toFixed(2)}</td>
-                  <td className="st-num">{row.ip.toFixed(2)}</td>
                   <td className="st-num st-total">{(row.ep + row.ip).toFixed(2)}</td>
                   <td className="st-remove-cell" onClick={e => e.stopPropagation()}>
                     <button

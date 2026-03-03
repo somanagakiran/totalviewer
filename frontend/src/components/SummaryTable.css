@@ -90,6 +90,7 @@
 
 .summary-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 12px;
   color: var(--text-primary, #e6edf3);
@@ -239,7 +240,7 @@ td.st-num {
 }
 
 /* Qty column */
-.col-qty { width: 60px; }
+.col-qty { width: 80px; }
 
 .st-qty-input {
   background: transparent;
