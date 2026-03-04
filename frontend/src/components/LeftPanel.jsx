@@ -13,7 +13,11 @@ function formatNumber(n) {
   return n.toLocaleString();
 }
 
-export default function LeftPanel({ fileName, fileSize, layers, entityCount, units, boundingBox, isOpen, onClose }) {
+export default function LeftPanel({
+  fileName, fileSize, layers, entityCount, units, boundingBox,
+  isOpen, onClose,
+  stock, onUpdateStock,
+}) {
   const [layersExpanded, setLayersExpanded] = useState(true);
 
   const hasFile = !!fileName;
@@ -31,7 +35,7 @@ export default function LeftPanel({ fileName, fileSize, layers, entityCount, uni
         </button>
       </div>
 
-      {/* File Details */}
+      {/* 1. Document */}
       <div className="panel-section">
         <div className="section-label">Document</div>
         <div className="info-grid">
@@ -54,7 +58,7 @@ export default function LeftPanel({ fileName, fileSize, layers, entityCount, uni
         </div>
       </div>
 
-      {/* Bounding Box */}
+      {/* 2. Bounding Box */}
       {boundingBox && boundingBox.width > 0 && (
         <div className="panel-section">
           <div className="section-label">Bounding Box</div>
@@ -79,7 +83,89 @@ export default function LeftPanel({ fileName, fileSize, layers, entityCount, uni
         </div>
       )}
 
-      {/* Layers */}
+      {/* 3. Stock Sheet */}
+      {stock && onUpdateStock && (
+        <div className="panel-section">
+          <div className="section-label">Stock Sheet</div>
+          <div className="info-grid">
+            <div className="info-row info-row--editable">
+              <span className="info-key">Width</span>
+              <div className="stock-input-wrap">
+                <input
+                  className="stock-input"
+                  type="number"
+                  min="1"
+                  value={stock.width}
+                  onChange={e => onUpdateStock('width', e.target.value)}
+                  title="Sheet width (mm)"
+                />
+                <span className="stock-unit">mm</span>
+              </div>
+            </div>
+            <div className="info-row info-row--editable">
+              <span className="info-key">Height</span>
+              <div className="stock-input-wrap">
+                <input
+                  className="stock-input"
+                  type="number"
+                  min="1"
+                  value={stock.height}
+                  onChange={e => onUpdateStock('height', e.target.value)}
+                  title="Sheet height (mm)"
+                />
+                <span className="stock-unit">mm</span>
+              </div>
+            </div>
+            <div className="info-row info-row--editable">
+              <span className="info-key">Thickness</span>
+              <div className="stock-input-wrap">
+                <input
+                  className="stock-input"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={stock.thickness}
+                  onChange={e => onUpdateStock('thickness', e.target.value)}
+                  title="Sheet thickness (mm)"
+                />
+                <span className="stock-unit">mm</span>
+              </div>
+            </div>
+            <div className="info-row info-row--editable">
+              <span className="info-key">Gap</span>
+              <div className="stock-input-wrap">
+                <input
+                  className="stock-input"
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  value={stock.spacing}
+                  onChange={e => onUpdateStock('spacing', e.target.value)}
+                  title="Part-to-part spacing (mm)"
+                />
+                <span className="stock-unit">mm</span>
+              </div>
+            </div>
+            <div className="info-row info-row--editable">
+              <span className="info-key">Edge Gap</span>
+              <div className="stock-input-wrap">
+                <input
+                  className="stock-input"
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  value={stock.edge_gap ?? 0}
+                  onChange={e => onUpdateStock('edge_gap', e.target.value)}
+                  title="Minimum distance from sheet boundary (mm)"
+                />
+                <span className="stock-unit">mm</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4. Layers */}
       <div className="panel-section">
         <button
           className="section-toggle"

@@ -10,8 +10,6 @@ export default function SummaryTable({
   onClearAll,
   partsOpen,
   onToggleTable,
-  stock,
-  onUpdateStock,
   nestingResult,
   nestingError,
   isNesting,
@@ -169,72 +167,6 @@ export default function SummaryTable({
 
       {/* -- Nesting bar (always visible) ---------------------------------- */}
       <div className="st-nesting-bar">
-
-        <span className="st-nesting-label">Stock Sheet</span>
-
-        <div className="st-nesting-field">
-          <label className="st-nesting-field-label">W</label>
-          <input
-            className="st-nesting-input"
-            type="number"
-            min="1"
-            value={stock.width}
-            onChange={e => onUpdateStock('width', e.target.value)}
-            title="Sheet Width (mm)"
-          />
-        </div>
-
-        <div className="st-nesting-field">
-          <label className="st-nesting-field-label">H</label>
-          <input
-            className="st-nesting-input"
-            type="number"
-            min="1"
-            value={stock.height}
-            onChange={e => onUpdateStock('height', e.target.value)}
-            title="Sheet Height (mm)"
-          />
-        </div>
-
-        <div className="st-nesting-field">
-          <label className="st-nesting-field-label">T</label>
-          <input
-            className="st-nesting-input"
-            type="number"
-            min="0"
-            value={stock.thickness}
-            onChange={e => onUpdateStock('thickness', e.target.value)}
-            title="Sheet Thickness (mm)"
-          />
-        </div>
-
-        <div className="st-nesting-field">
-          <label className="st-nesting-field-label">Gap</label>
-          <input
-            className="st-nesting-input"
-            type="number"
-            min="0"
-            step="0.5"
-            value={stock.spacing}
-            onChange={e => onUpdateStock('spacing', e.target.value)}
-            title="Part-to-part spacing (mm)"
-          />
-          <span className="st-nesting-unit">mm</span>
-        </div>
-
-        <div className="st-nesting-field">
-          <label className="st-nesting-field-label">Edge Gap</label>
-          <input
-            className="st-nesting-input"
-            type="number"
-            min="0"
-            step="0.5"
-            value={stock.edge_gap ?? 0}
-            onChange={e => onUpdateStock('edge_gap', e.target.value)}
-            title="Minimum distance from sheet boundary (mm)"
-          />
-          <span className="st-nesting-unit">mm</span>
-        </div>
 
         <div className="st-nesting-actions">
           <button

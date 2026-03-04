@@ -124,6 +124,52 @@
   color: var(--text-accent);
 }
 
+/* Stock sheet editable rows */
+.info-row--editable {
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+
+.stock-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stock-input {
+  width: 72px;
+  height: 22px;
+  padding: 0 6px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  outline: none;
+  transition: border-color 0.15s;
+  -moz-appearance: textfield;
+}
+
+.stock-input::-webkit-inner-spin-button,
+.stock-input::-webkit-outer-spin-button {
+  opacity: 0;
+}
+
+.stock-input:focus {
+  border-color: var(--accent-blue);
+  background: rgba(56, 139, 253, 0.04);
+}
+
+.stock-unit {
+  font-size: 10px;
+  color: var(--text-muted);
+  user-select: none;
+  min-width: 16px;
+}
+
 /* Layers */
 .layer-list {
   display: flex;

@@ -568,6 +568,8 @@ export default function App() {
             boundingBox={analysisResult?.boundingBox}
             isOpen={leftPanelOpen}
             onClose={() => setLeftPanelOpen(false)}
+            stock={stock}
+            onUpdateStock={handleUpdateStock}
           />
         </div>
 
