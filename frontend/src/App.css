@@ -30,6 +30,15 @@
 /* On mobile (≤991px) the LeftPanel is fixed-positioned, so the wrapper
    collapses to 0 naturally; no extra rule needed. */
 
+/* ── Full-page non-workspace views ───────────────────────────────────────── */
+.page-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .viewer-container {
   flex: 1;
   display: flex;

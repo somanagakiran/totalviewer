@@ -1,22 +1,21 @@
 import { useState, useCallback, useRef, useMemo } from 'react';
-import TopBar       from './components/TopBar';
-import LeftPanel    from './components/LeftPanel';
-import DXFViewer    from './components/DXFViewer';
-import StatusBar    from './components/StatusBar';
-import SummaryTable from './components/SummaryTable';
-import AppSettings    from './components/AppSettings';
-import QuotationView  from './components/QuotationView';
+import TopBar        from './components/TopBar';
+import LeftPanel     from './components/LeftPanel';
+import DXFViewer     from './components/DXFViewer';
+import StatusBar     from './components/StatusBar';
+import SummaryTable  from './components/SummaryTable';
+import AppSettings   from './components/AppSettings';
+import QuotationView from './components/QuotationView';
+import SaveQuoteModal from './components/SaveQuoteModal';
+import QuotesPage    from './components/QuotesPage';
+import ClientsPage   from './components/ClientsPage';
+import ClientDetail  from './components/ClientDetail';
 import './App.css';
 
-// -------------------------------------------------------------
-// POLYGON EXTRACTION
-// Build the outer polygon from the full geometry bounding box.
-// -------------------------------------------------------------
+// ── Polygon helper ─────────────────────────────────────────────────────────
 function extractPolygons(geometry) {
   if (!Array.isArray(geometry)) return { outer: [], holes: [] };
-
-  let minX = Infinity, maxX = -Infinity;
-  let minY = Infinity, maxY = -Infinity;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (const e of geometry) {
     for (const pt of (Array.isArray(e.points) ? e.points : [])) {
       if (pt[0] < minX) minX = pt[0];
@@ -26,27 +25,36 @@ function extractPolygons(geometry) {
     }
   }
   if (!isFinite(minX) || maxX <= minX || maxY <= minY) return { outer: [], holes: [] };
-  return {
-    outer: [[minX, minY], [maxX, minY], [maxX, maxY], [minX, maxY]],
-    holes: [],
-  };
+  return { outer: [[minX, minY], [maxX, minY], [maxX, maxY], [minX, maxY]], holes: [] };
 }
 
-// Supported file extensions
+// ── File helpers ────────────────────────────────────────────────────────────
 const IMAGE_EXTS     = new Set(['jpg', 'jpeg', 'png']);
 const BACKEND_EXTS   = new Set(['dxf', 'pdf']);
 const SUPPORTED_EXTS = new Set([...IMAGE_EXTS, ...BACKEND_EXTS]);
-
-function fileExt(file) {
-  return file?.name?.split('.').pop().toLowerCase() ?? '';
-}
+function fileExt(file) { return file?.name?.split('.').pop().toLowerCase() ?? ''; }
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
 
-// -------------------------------------------------------------
+// ── ID generator ────────────────────────────────────────────────────────────
+let _idCounter = 0;
+function uid(prefix = 'id') { return `${prefix}_${++_idCounter}_${Date.now()}`; }
+
+// ── Simulated current user (SaaS-ready: add user_id to quotes/clients later) ──
+const CURRENT_USER = { id: 'user_001', email: 'demo@totalviewer.app' };
+
+// ── Quote weight helper ─────────────────────────────────────────────────────
+const DENSITY = { MS: 7.85, SS: 8.0, AL: 2.70 };
+function weightKg(area_mm2, thickness_mm, mat) {
+  const d = DENSITY[String(mat).toUpperCase()] ?? 7.85;
+  return (area_mm2 * thickness_mm * d) / 1_000_000;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function App() {
 
+  // ── Workspace state ─────────────────────────────────────────────────────
   const [uploadedFile, setUploadedFile]     = useState(null);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [geometryParts, setGeometryParts]   = useState([]);
@@ -75,18 +83,33 @@ export default function App() {
   const [viewMode, setViewMode]           = useState('original');
   const [activeFileType, setActiveFileType] = useState('dxf');
 
-  // Modal / view state
-  const [showSettings, setShowSettings] = useState(false);
-  const [quoteMode, setQuoteMode]       = useState(false);
+  // ── App-level navigation & modal state ─────────────────────────────────
+  const [activePage, setActivePage]         = useState('workspace');
+  const [showSettings, setShowSettings]     = useState(false);
+  const [quoteMode, setQuoteMode]           = useState(false);
+  const [showSaveModal, setShowSaveModal]   = useState(false);
+  const [saveModalPrefill, setSaveModalPrefill] = useState(null);
+
+  // ── SaaS data (in-memory, ready for DB integration) ─────────────────────
+  //    Each quote has userId for future multi-user support
+  //    Each client has userId for future multi-user support
+  const [quotes, setQuotes]                 = useState([]);
+  const [clients, setClients]               = useState([]);
+  const [selectedClientId, setSelectedClientId] = useState(null);
 
   const closeAllPanels   = useCallback(() => setLeftPanelOpen(false), []);
   const handleToggleLeft = useCallback(() => setLeftPanelOpen(v => !v), []);
 
-  // -------------------------------------------------------
-  // FILE UPLOAD
-  // -------------------------------------------------------
-  const handleFileUpload = useCallback(async (filesInput) => {
+  // ── Page navigation ─────────────────────────────────────────────────────
+  const handleSetPage = useCallback((page) => {
+    setActivePage(page);
+    if (page !== 'workspace') {
+      setQuoteMode(false);
+    }
+  }, []);
 
+  // ── FILE UPLOAD ─────────────────────────────────────────────────────────
+  const handleFileUpload = useCallback(async (filesInput) => {
     const allFiles   = Array.isArray(filesInput) ? filesInput : [filesInput];
     const validFiles = allFiles.filter(f => SUPPORTED_EXTS.has(fileExt(f)));
 
@@ -94,7 +117,6 @@ export default function App() {
       setError('Invalid file format. Accepted: .DXF, .PDF, .JPG, .PNG');
       return;
     }
-
     const remaining = Math.max(0, 10 - rows.length);
     if (remaining === 0) {
       setError('Maximum 10 parts loaded. Remove parts before importing more.');
@@ -155,15 +177,8 @@ export default function App() {
     }
     apiBaseRef.current = resolvedBase;
 
-    // ── Upload all backend files in parallel ────────────────────────────
-    // Promise.allSettled ensures one failure never blocks the others.
-    // A shared counter lets us update the status bar as each response arrives.
     let doneCount = 0;
-    setViewerStatus(
-      backendFiles.length === 1
-        ? `Uploading ${backendFiles[0].name}…`
-        : `Uploading ${backendFiles.length} files…`
-    );
+    setViewerStatus(backendFiles.length === 1 ? `Uploading ${backendFiles[0].name}…` : `Uploading ${backendFiles.length} files…`);
 
     const uploadOne = async (file) => {
       const ctrl  = new AbortController();
@@ -186,23 +201,15 @@ export default function App() {
 
     const outcomes = await Promise.allSettled(backendFiles.map(uploadOne));
 
-    // ── Collect results — no state updates yet ──────────────────────────
-    const newRows     = [];
-    const newGeoParts = [];
-    const uploadErrors = [];
+    const newRows = [], newGeoParts = [], uploadErrors = [];
     let lastDxfResult = null, lastFile = null;
 
     for (const outcome of outcomes) {
       if (outcome.status === 'rejected') {
         const err = outcome.reason;
-        uploadErrors.push(
-          err?.name === 'AbortError'
-            ? 'A file timed out. Please try again.'
-            : (err?.message || 'Upload failed')
-        );
+        uploadErrors.push(err?.name === 'AbortError' ? 'A file timed out.' : (err?.message || 'Upload failed'));
         continue;
       }
-
       const { file, data } = outcome.value;
       const ext = fileExt(file);
       rowCounterRef.current += 1;
@@ -215,12 +222,11 @@ export default function App() {
         const ip     = part?.internal_perimeter ?? data.internal_perimeter ?? 0;
         newRows.push({ id: rowId, fileName: file.name, fileSize: file.size,
           fileType: 'dxf', imageUrl: null, pdfData: null,
-          material: 'MS', qty: 1, holes: data.holes ?? 0,
-          ep, ip, geometry: data.geometry, analysisResult: result });
+          material: 'MS', qty: 1, holes: data.holes ?? 0, ep, ip,
+          geometry: data.geometry, analysisResult: result });
         newGeoParts.push({ id: rowId, geometry: data.geometry });
         lastDxfResult = result;
         lastFile      = file;
-
       } else if (ext === 'pdf') {
         const pdfData = {
           page_image_b64: data.page_image_b64,
@@ -236,7 +242,6 @@ export default function App() {
       }
     }
 
-    // ── Single batched state update — DXFViewer re-renders exactly once ──
     if (newRows.length > 0) {
       const lastRow = newRows[newRows.length - 1];
       setRows(prev => {
@@ -245,9 +250,7 @@ export default function App() {
       });
       setSelectedRowId(lastRow.id);
       setActiveFileType(lastRow.fileType ?? 'dxf');
-      if (newGeoParts.length > 0) {
-        setGeometryParts(prev => [...prev, ...newGeoParts]);
-      }
+      if (newGeoParts.length > 0) setGeometryParts(prev => [...prev, ...newGeoParts]);
     }
 
     if (uploadErrors.length > 0) setError(uploadErrors[uploadErrors.length - 1]);
@@ -262,14 +265,10 @@ export default function App() {
           : `Loaded - ${lastDxfResult.entityCount} entities - ${lastDxfResult.layers?.length ?? 0} layers`
       );
     }
-
     setIsLoading(false);
-
   }, [rows]);
 
-  // -------------------------------------------------------
-  // ROW MANAGEMENT
-  // -------------------------------------------------------
+  // ── ROW MANAGEMENT ──────────────────────────────────────────────────────
   const handleSelectRow = useCallback((rowId) => {
     const row = rows.find(r => r.id === rowId);
     if (!row) return;
@@ -277,7 +276,6 @@ export default function App() {
     setAnalysisResult(row.analysisResult);
     setUploadedFile({ name: row.fileName, size: row.fileSize });
     setActiveFileType(row.fileType ?? 'dxf');
-
     if (row.fileType === 'dxf' && row.geometry) {
       setGeometryParts([{ id: row.id, geometry: row.geometry }]);
       setViewerStatus(`Loaded - ${row.analysisResult?.entityCount ?? '?'} entities - ${row.analysisResult?.layers?.length ?? 0} layers`);
@@ -285,7 +283,7 @@ export default function App() {
       setGeometryParts([]);
       const dc = row.pdfData?.extracted_dimensions?.length ?? 0;
       setViewerStatus(`Loaded - ${row.fileName}` + (dc > 0 ? ` (${dc} dimensions)` : ''));
-    } else if (row.fileType === 'image') {
+    } else {
       setGeometryParts([]);
       setViewerStatus(`Loaded - ${row.fileName}`);
     }
@@ -306,53 +304,31 @@ export default function App() {
 
   const handleClearAll = useCallback(() => {
     rows.forEach(row => { if (row?.imageUrl) URL.revokeObjectURL(row.imageUrl); });
-    setRows([]);
-    setGeometryParts([]);
-    setSelectedRowId(null);
-    setSelectedParts([]);
-    setNestingResult(null);
-    setNestingError(null);
-    setAnalysisResult(null);
-    setUploadedFile(null);
-    setViewerStatus('Ready');
-    setViewMode('original');
+    setRows([]); setGeometryParts([]); setSelectedRowId(null); setSelectedParts([]);
+    setNestingResult(null); setNestingError(null); setAnalysisResult(null);
+    setUploadedFile(null); setViewerStatus('Ready'); setViewMode('original');
   }, [rows]);
 
-  const handleFitScreen = useCallback(() => {
-    window.dispatchEvent(new CustomEvent('dxf-fit-screen'));
-  }, []);
-
+  const handleFitScreen  = useCallback(() => window.dispatchEvent(new CustomEvent('dxf-fit-screen')), []);
   const handleTogglePart = useCallback((rowId) => {
     setSelectedParts(prev => prev.includes(rowId) ? prev.filter(id => id !== rowId) : [...prev, rowId]);
   }, []);
-
   const handleUpdateStock = useCallback((field, value) => {
     setStock(prev => ({ ...prev, [field]: parseFloat(value) || 0 }));
   }, []);
 
-  // -------------------------------------------------------
-  // NESTING
-  // -------------------------------------------------------
-  const _nestParts = (targetRows) =>
-    targetRows
-      .map(row => {
-        const { outer, holes } = extractPolygons(row.geometry);
-        if (outer.length < 3) return null;
-        return { id: String(row.id), outer, holes, quantity: Math.max(1, Math.floor(row.qty ?? 1)), area: 0 };
-      })
-      .filter(Boolean);
+  // ── NESTING ─────────────────────────────────────────────────────────────
+  const _nestParts = (targetRows) => targetRows.map(row => {
+    const { outer, holes } = extractPolygons(row.geometry);
+    if (outer.length < 3) return null;
+    return { id: String(row.id), outer, holes, quantity: Math.max(1, Math.floor(row.qty ?? 1)), area: 0 };
+  }).filter(Boolean);
 
-  const _runNest = useCallback(async (nestParts, rotations = [0.0, 90.0, 180.0, 270.0]) => {
+  const _runNest = useCallback(async (nestParts, rotations = [0, 90, 180, 270]) => {
     const base = apiBaseRef.current ?? API_BASE;
-    const body = {
-      parts: nestParts,
-      stock: { width: stock.width, height: stock.height, thickness: stock.thickness },
-      step_x: 5.0, step_y: 5.0,
-      margin:    stock.spacing ?? 0,
-      rotations,
-      edge_gap:  stock.edge_gap ?? 0,
-    };
-    const res    = await fetch(`${base}/nest`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const body = { parts: nestParts, stock: { width: stock.width, height: stock.height, thickness: stock.thickness },
+      step_x: 5, step_y: 5, margin: stock.spacing ?? 0, rotations, edge_gap: stock.edge_gap ?? 0 };
+    const res = await fetch(`${base}/nest`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const result = await res.json();
     if (!res.ok) throw new Error(result.detail || 'Nesting request failed');
     return result;
@@ -365,10 +341,9 @@ export default function App() {
       const nestParts = _nestParts(rows);
       if (!nestParts.length) return;
       const result = await _runNest(nestParts);
-      setNestingResult(result); setNestingError(null); setViewMode('nesting');
-    } catch (err) {
-      setNestingError(err.message || 'Nesting failed.');
-    } finally { setIsNesting(false); }
+      setNestingResult(result); setViewMode('nesting');
+    } catch (err) { setNestingError(err.message || 'Nesting failed.'); }
+    finally { setIsNesting(false); }
   }, [rows, _runNest, isNesting]);
 
   const handleNestSelected = useCallback(async () => {
@@ -379,29 +354,185 @@ export default function App() {
     try {
       const nestParts = _nestParts(targetRows);
       if (!nestParts.length) return;
-      const result = await _runNest(nestParts, [0.0, 90.0, 180.0, 270.0]);
-      setNestingResult(result); setNestingError(null); setViewMode('nesting');
-    } catch (err) {
-      setNestingError(err.message || 'Nesting failed.');
-    } finally { setIsNesting(false); }
+      const result = await _runNest(nestParts);
+      setNestingResult(result); setViewMode('nesting');
+    } catch (err) { setNestingError(err.message || 'Nesting failed.'); }
+    finally { setIsNesting(false); }
   }, [rows, selectedParts, _runNest, isNesting]);
 
-  // -------------------------------------------------------
+  // ── SAVE QUOTE (in-memory) ───────────────────────────────────────────────
+  const handleOpenSaveModal = useCallback((prefill = null) => {
+    setSaveModalPrefill(prefill);
+    setShowSaveModal(true);
+  }, []);
 
+  const handleSaveQuote = useCallback((formData) => {
+    const company = formData.company.trim();
+
+    // Auto-create client if not already in list (match by company name, case-insensitive)
+    let clientId = null;
+    const existingClient = clients.find(c => c.company.toLowerCase() === company.toLowerCase());
+    if (existingClient) {
+      clientId = existingClient.id;
+    } else {
+      clientId = uid('client');
+      const newClient = {
+        id: clientId,
+        company,
+        city: '',
+        address: '',
+        gst: '',
+        userId: CURRENT_USER.id,    // ready for SaaS user_id
+      };
+      setClients(prev => [...prev, newClient]);
+    }
+
+    const newQuote = {
+      id:          uid('quote'),
+      quoteNo:     formData.quoteNo,
+      company,
+      clientId,
+      date:        formData.date,
+      amount:      formData.amount,
+      parts:       formData.parts,
+      totalWeight: formData.totalWeight,
+      status:      'Quoted',
+      userId:      CURRENT_USER.id,   // ready for SaaS user_id
+    };
+    setQuotes(prev => [...prev, newQuote]);
+    setShowSaveModal(false);
+    // Navigate to quotes list
+    setActivePage('quotes');
+    setQuoteMode(false);
+  }, [clients]);
+
+  const handleUpdateQuoteStatus = useCallback((quoteId, newStatus) => {
+    setQuotes(prev => prev.map(q => q.id === quoteId ? { ...q, status: newStatus } : q));
+  }, []);
+
+  const handleAddClient = useCallback((formData) => {
+    const company = formData.company.trim();
+    if (clients.find(c => c.company.toLowerCase() === company.toLowerCase())) {
+      alert(`Client "${company}" already exists.`);
+      return;
+    }
+    setClients(prev => [...prev, {
+      id:      uid('client'),
+      company,
+      city:    formData.city    || '',
+      address: formData.address || '',
+      gst:     formData.gst     || '',
+      userId:  CURRENT_USER.id,
+    }]);
+  }, [clients]);
+
+  const handleSelectClient = useCallback((clientId) => {
+    setSelectedClientId(clientId);
+    setActivePage('client-detail');
+  }, []);
+
+  // ── Build prefill from current QuotationView state ───────────────────────
+  // When "Save Quote" is clicked from QuotationView, we pass computed totals
+  const buildQuotePrefill = useCallback(() => {
+    const t = parseFloat(stock?.thickness) || 0;
+    let parts = 0, weight = 0;
+    rows.filter(r => r.fileType === 'dxf').forEach(r => {
+      const area = r.analysisResult?.outer_boundary_area ?? 0;
+      const wt   = weightKg(area, t, r.material);
+      weight += wt * (r.qty || 1);
+      parts  += (r.qty || 1);
+    });
+    return { parts, totalWeight: +weight.toFixed(3), amount: '', company: '' };
+  }, [rows, stock]);
+
+  // ─────────────────────────────────────────────────────────────────────────
   const selectedRow = rows.find(r => r.id === selectedRowId);
 
-  // ── Quote mode: full-screen quotation replaces the entire workspace ──
+  // ── Quote mode: full-screen quotation ───────────────────────────────────
   if (quoteMode) {
     return (
-      <QuotationView
-        rows={rows}
-        apiBase={API_BASE}
-        stock={stock}
-        onBack={() => setQuoteMode(false)}
-      />
+      <>
+        <QuotationView
+          rows={rows}
+          apiBase={API_BASE}
+          stock={stock}
+          onBack={() => setQuoteMode(false)}
+          onSaveQuote={() => handleOpenSaveModal(buildQuotePrefill())}
+        />
+        {showSaveModal && (
+          <SaveQuoteModal
+            prefill={saveModalPrefill}
+            clients={clients}
+            onSave={handleSaveQuote}
+            onClose={() => setShowSaveModal(false)}
+          />
+        )}
+      </>
     );
   }
 
+  // ── Non-workspace pages ──────────────────────────────────────────────────
+  if (activePage !== 'workspace') {
+    return (
+      <div className="app-layout">
+        <TopBar
+          fileName={null}
+          onFileUpload={handleFileUpload}
+          onFitScreen={handleFitScreen}
+          isLoading={false}
+          leftPanelOpen={false}
+          onToggleLeft={() => {}}
+          sidebarOpen={false}
+          onToggleSidebar={() => {}}
+          onOpenSettings={() => setShowSettings(true)}
+          onOpenQuote={() => { setActivePage('workspace'); setQuoteMode(true); }}
+          activePage={activePage}
+          onSetPage={handleSetPage}
+          userEmail={CURRENT_USER.email}
+        />
+
+        <div className="page-content">
+          {activePage === 'quotes' && (
+            <QuotesPage
+              quotes={quotes}
+              onUpdateStatus={handleUpdateQuoteStatus}
+              onNewQuote={() => handleOpenSaveModal(null)}
+            />
+          )}
+          {activePage === 'clients' && (
+            <ClientsPage
+              clients={clients}
+              quotes={quotes}
+              onSelectClient={handleSelectClient}
+              onAddClient={handleAddClient}
+            />
+          )}
+          {activePage === 'client-detail' && (
+            <ClientDetail
+              client={clients.find(c => c.id === selectedClientId)}
+              quotes={quotes}
+              onBack={() => setActivePage('clients')}
+            />
+          )}
+        </div>
+
+        {showSettings && (
+          <AppSettings apiBase={API_BASE} onClose={() => setShowSettings(false)} />
+        )}
+
+        {showSaveModal && (
+          <SaveQuoteModal
+            prefill={saveModalPrefill}
+            clients={clients}
+            onSave={handleSaveQuote}
+            onClose={() => setShowSaveModal(false)}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // ── Workspace (default) ──────────────────────────────────────────────────
   return (
     <div className="app-layout">
 
@@ -416,6 +547,9 @@ export default function App() {
         onToggleSidebar={() => setSidebarOpen(v => !v)}
         onOpenSettings={() => setShowSettings(true)}
         onOpenQuote={() => setQuoteMode(true)}
+        activePage={activePage}
+        onSetPage={handleSetPage}
+        userEmail={CURRENT_USER.email}
       />
 
       <div
@@ -478,14 +612,18 @@ export default function App() {
 
       <StatusBar status={viewerStatus} fileName={uploadedFile?.name} />
 
-      {/* ── Modals ── */}
       {showSettings && (
-        <AppSettings
-          apiBase={API_BASE}
-          onClose={() => setShowSettings(false)}
-        />
+        <AppSettings apiBase={API_BASE} onClose={() => setShowSettings(false)} />
       )}
 
+      {showSaveModal && (
+        <SaveQuoteModal
+          prefill={saveModalPrefill}
+          clients={clients}
+          onSave={handleSaveQuote}
+          onClose={() => setShowSaveModal(false)}
+        />
+      )}
 
     </div>
   );
