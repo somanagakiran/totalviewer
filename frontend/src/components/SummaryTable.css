@@ -186,6 +186,12 @@
   text-align: right;
 }
 
+/* .summary-table th has higher specificity than .st-num, so we need a
+   more specific rule to keep numeric headers right-aligned like their values */
+.summary-table th.st-num {
+  text-align: right;
+}
+
 /* Monospace rendering only for data rows */
 td.st-num {
   font-variant-numeric: tabular-nums;
